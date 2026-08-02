@@ -1,0 +1,15 @@
+{
+  "name": "QR Учет и Автоформа",
+  "short_name": "QR Учет",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3483/3483038.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
