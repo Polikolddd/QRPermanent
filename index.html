@@ -13,7 +13,7 @@
     input { width: 100%; padding: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 0.95rem; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; }
-    .status { margin-top: 10px; font-size: 0.9rem; font-weight: 600; text-align: center; }
+    .status { margin-top: 10px; font-size: 0.95rem; font-weight: 600; text-align: center; white-space: pre-line; }
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
   </style>
@@ -43,11 +43,11 @@
   </div>
 
   <script>
-    // Ваши номера полей из Google Формы:
     const ENTRY_NAME = 'entry.1408210808';    // Поле 1: ФИО
     const ENTRY_COMPANY = 'entry.1935797578'; // Поле 2: Компания
 
-    let isProcessing = false; // Защита от повторной отправки за 1 секунду
+    let isProcessing = false; 
+    let countdownTimer = null;
 
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("formUrl").value = localStorage.getItem("app_form_url") || "";
@@ -95,7 +95,6 @@
 
       const companyValue = savedCompany ? savedCompany : qrData;
 
-      // Автоматическая трансформация ссылки под прямую фоновую отправку (formResponse)
       let postUrl = baseUrl.replace(/\/viewform.*/, '/formResponse');
       if (!postUrl.endsWith('/formResponse')) {
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
@@ -108,27 +107,46 @@
       scanResultDiv.className = "status";
       scanResultDiv.innerText = "⏳ Отправка данных...";
 
-      // Фоновая отправка формы
       fetch(postUrl, {
         method: "POST",
         mode: "no-cors",
         body: formData
       })
       .then(() => {
-        scanResultDiv.className = "status success";
-        scanResultDiv.innerText = "✅ Данные успешно отправлены в Google Форму!";
-        
-        // Разрешаем сканировать следующий QR через 2 секунды
-        setTimeout(() => {
-          scanResultDiv.innerText = "";
-          isProcessing = false;
-        }, 2000);
+        // Запуск таймера на 5 минут (300 секунд)
+        startCountdown(300);
       })
       .catch((err) => {
         scanResultDiv.className = "status error";
         scanResultDiv.innerText = "❌ Ошибка при отправке. Проверьте интернет.";
         isProcessing = false;
       });
+    }
+
+    function startCountdown(seconds) {
+      const scanResultDiv = document.getElementById("scanResult");
+      scanResultDiv.className = "status success";
+      
+      let timeLeft = seconds;
+      
+      if (countdownTimer) clearInterval(countdownTimer);
+
+      countdownTimer = setInterval(() => {
+        const minutes = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        
+        scanResultDiv.innerText = `✅ Отсканировано и отправлено!\n⏱ Таймер: ${timeString}`;
+        
+        timeLeft--;
+
+        if (timeLeft < 0) {
+          clearInterval(countdownTimer);
+          scanResultDiv.innerText = "👍 Готово к новому сканированию";
+          setTimeout(() => { scanResultDiv.innerText = ""; }, 3000);
+          isProcessing = false;
+        }
+      }, 1000);
     }
   </script>
 </body>
