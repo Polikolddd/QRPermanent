@@ -71,13 +71,13 @@
   </div>
 
   <script>
-    // Ссылка на вашу Google Таблицу (Справочник ID)
+    // Ссылка на Google Таблицу (Справочник ID)
     const SHEET_URL_OR_ID = 'https://docs.google.com/spreadsheets/d/1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU/edit?usp=sharing'; 
 
-    // Ссылка на вашу Google Форму для сбора результатов сканирования
+    // Ссылка на Google Форму
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
     const ENTRY_NAME = 'entry.1408210808';    // Поле ФИО оператора
-    const ENTRY_COMPANY = 'entry.1935797578'; // Поле отсканированных данных QR-кода
+    const ENTRY_COMPANY = 'entry.1935797578'; // Поле Компания оператора
 
     let operatorsDatabase = {};
     let isDbLoaded = false;
@@ -85,7 +85,6 @@
     let isProcessing = false; 
     let countdownTimer = null;
 
-    // Автоматическое извлечение ID из любой ссылки Google Таблиц
     function extractSheetId(input) {
       if (!input) return '';
       const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -98,7 +97,6 @@
       loadDatabaseFromGoogleSheet();
     });
 
-    // Загрузка онлайн-базы из Google Таблицы
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
       const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
@@ -113,7 +111,6 @@
         statusDiv.innerText = "🟢 База пользователей готова";
         statusDiv.style.color = "#42b72a";
 
-        // Проверяем ранее сохраненный ID
         const savedId = localStorage.getItem("app_operator_id") || "";
         if (savedId && operatorsDatabase[savedId]) {
           document.getElementById("operatorId").value = savedId;
@@ -131,13 +128,12 @@
       }
     }
 
-    // Парсер CSV из Google Таблиц
     function parseCsvDatabase(csvText) {
       const lines = csvText.split('\n');
       operatorsDatabase = {};
 
       lines.forEach((line, index) => {
-        if (index === 0) return; // Пропускаем заголовок (A1: ID, B1: ФИО, C1: Компания)
+        if (index === 0) return;
 
         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
 
@@ -237,6 +233,7 @@
 
     function sendToGoogleForm(qrData) {
       const fio = localStorage.getItem("app_fio") || "";
+      const company = localStorage.getItem("app_company") || "";
       const scanResultDiv = document.getElementById("scanResult");
 
       let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
@@ -246,7 +243,7 @@
 
       const formData = new FormData();
       formData.append(ENTRY_NAME, fio);
-      formData.append(ENTRY_COMPANY, qrData);
+      formData.append(ENTRY_COMPANY, company); // Теперь отправляется компания оператора!
 
       scanResultDiv.className = "status success";
       scanResultDiv.innerText = "⏳ Отправка данных...";
