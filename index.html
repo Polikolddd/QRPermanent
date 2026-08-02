@@ -3,163 +3,78 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QR Автозаполнение Форм</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2563eb">
-  
-  <script src="https://unpkg.com/html5-qrcode"></script>
-
+  <title>QR Scanner PWA</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; margin: 0; background: #f4f4f5; color: #18181b; }
-    .card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
-    h3 { margin-top: 0; font-size: 18px; color: #0f172a; }
-    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
-    label { font-size: 13px; color: #64748b; font-weight: 600; margin-top: 10px; display: block; }
-    input, select { width: 100%; padding: 10px; margin-top: 4px; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 15px; }
-    button { width: 100%; padding: 12px; margin-top: 14px; border-radius: 8px; border: none; background: #2563eb; color: white; font-weight: 600; font-size: 16px; cursor: pointer; }
-    button:active { background: #1d4ed8; }
-    .btn-secondary { background: #475569; margin-top: 8px; }
-    .status-box { padding: 12px; background: #e0f2fe; color: #0369a1; border-radius: 8px; font-size: 14px; margin-top: 10px; word-break: break-all; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #f0f2f5; margin: 0; padding: 16px; color: #1c1e21; }
+    .card { background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
+    h2 { margin-top: 0; font-size: 1.1rem; color: #1877f2; }
+    label { display: block; margin-top: 10px; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: #606770; }
+    input { width: 100%; padding: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 0.95rem; }
+    button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; }
+    .status { margin-top: 10px; font-size: 0.85rem; color: #42b72a; font-weight: 600; text-align: center; }
   </style>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
 
-  <!-- Блок 1: Настройка профиля -->
   <div class="card">
-    <h3>👤 Ваши данные (для автозаполнения)</h3>
-    <form id="profileForm">
-      <label>ФИО:</label>
-      <input type="text" id="profFullName" placeholder="Нурмахмуд Губезов" required>
-      
-      <label>Компания:</label>
-      <input type="text" id="profCompany" placeholder="EUSS" required>
+    <h2>⚙️ Настройки</h2>
+    <label for="formUrl">Ссылка на вашу Google Форму:</label>
+    <input type="text" id="formUrl" placeholder="https://docs.google.com/forms/d/e/.../viewform">
 
-      <label>Режим при сканировании:</label>
-      <select id="actionMode">
-        <option value="open">Открыть заполненную Google Форму</option>
-        <option value="auto">Отправить автоматически в фоновом режиме</option>
-      </select>
-      
-      <button type="submit" class="btn-secondary">Сохранить настройки</button>
-    </form>
+    <label for="fio">Ваше ФИО:</label>
+    <input type="text" id="fio" placeholder="Введите ФИО">
+
+    <button onclick="saveSettings()">Сохранить настройки</button>
+    <div id="status" class="status"></div>
   </div>
 
-  <!-- Блок 2: Сканер QR-кода -->
   <div class="card">
-    <h3>📷 Сканировать QR-код формы</h3>
+    <h2>📷 Сканер QR-кода</h2>
     <div id="reader"></div>
-    <div id="status" class="status-box" style="display:none;"></div>
   </div>
 
   <script>
-    // Идентификаторы полей вашей Google Формы
-    const ENTRY_NAME = 'entry.1408210808';    // Поле ФИО
-    const ENTRY_COMPANY = 'entry.1935797578'; // Поле Компания
+    // Ваши номера полей из формы
+    const ENTRY_NAME = 'entry.1408210808';    // ФИО
+    const ENTRY_COMPANY = 'entry.1935797578'; // Компания (данные из QR)
 
-    // 1. PWA Service Worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
-    }
-
-    // 2. Загрузка сохраненного профиля
-    function loadProfile() {
-      const profile = JSON.parse(localStorage.getItem('pwa_user_profile') || '{}');
-      if (profile.fullName) {
-        document.getElementById('profFullName').value = profile.fullName;
-        document.getElementById('profCompany').value = profile.company;
-        if (profile.mode) document.getElementById('actionMode').value = profile.mode;
-      }
-    }
-
-    document.getElementById('profileForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const profile = {
-        fullName: document.getElementById('profFullName').value.trim(),
-        company: document.getElementById('profCompany').value.trim(),
-        mode: document.getElementById('actionMode').value
-      };
-      localStorage.setItem('pwa_user_profile', JSON.stringify(profile));
-      alert('Профиль сохранен! Теперь при сканировании эти данные будут подставляться автоматически.');
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("formUrl").value = localStorage.getItem("app_form_url") || "";
+      document.getElementById("fio").value = localStorage.getItem("app_fio") || "";
+      initScanner();
     });
 
-    // 3. Обработка отсканированной ссылки из QR-кода
-    function processQrCode(scannedText) {
-      const profile = JSON.parse(localStorage.getItem('pwa_user_profile') || '{}');
+    function saveSettings() {
+      const url = document.getElementById("formUrl").value.trim();
+      const fio = document.getElementById("fio").value.trim();
+      localStorage.setItem("app_form_url", url);
+      localStorage.setItem("app_fio", fio);
       
-      if (!profile.fullName) {
-        alert('Сначала заполните и сохраните ФИО и Компанию в профиле сверху!');
-        return;
-      }
-
-      if (navigator.vibrate) navigator.vibrate(100);
-
-      const statusBox = document.getElementById('status');
-      statusBox.style.display = 'block';
-
-      try {
-        // Создаем объект URL из отсканированной ссылки
-        let targetUrl = new URL(scannedText);
-
-        // Подставляем параметры ФИО и Компании
-        targetUrl.searchParams.set(ENTRY_NAME, profile.fullName);
-        targetUrl.searchParams.set(ENTRY_COMPANY, profile.company);
-        targetUrl.searchParams.set('usp', 'pp_url');
-
-        if (profile.mode === 'open') {
-          // ВАРИАНТ А: Открываем страницу формы с уже заполненными полями
-          statusBox.innerHTML = `<strong>Ссылка сформирована!</strong><br>Переход на заполненную форму...`;
-          setTimeout(() => {
-            window.location.href = targetUrl.toString();
-          }, 800);
-
-        } else {
-          // ВАРИАНТ Б: Автоматическая фоновая отправка в Google Форму
-          let responseUrl = targetUrl.toString().replace('/viewform', '/formResponse');
-          
-          const formData = new FormData();
-          formData.append(ENTRY_NAME, profile.fullName);
-          formData.append(ENTRY_COMPANY, profile.company);
-
-          statusBox.innerHTML = `<strong>Отправка данных...</strong>`;
-
-          fetch(responseUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: formData
-          }).then(() => {
-            statusBox.style.background = '#dcfce7';
-            statusBox.style.color = '#15803d';
-            statusBox.innerHTML = `✅ <strong>Успешно отправлено!</strong><br>${profile.fullName} (${profile.company})`;
-          }).catch(() => {
-            statusBox.style.background = '#fee2e2';
-            statusBox.style.color = '#b91c1c';
-            statusBox.innerHTML = `❌ Ошибка отправки. Проверьте подключение к интернету.`;
-          });
-        }
-
-      } catch (err) {
-        // Если отсканированный QR-код не является прямой ссылкой
-        statusBox.style.background = '#fef3c7';
-        statusBox.style.color = '#b45309';
-        statusBox.innerHTML = `⚠️ Отсканированный QR-код не содержит ссылку: <br><code>${scannedText}</code>`;
-      }
+      const status = document.getElementById("status");
+      status.innerText = "✓ Настройки сохранены!";
+      setTimeout(() => { status.innerText = ""; }, 3000);
     }
 
-    // 4. Инициализация QR-сканера
-    const html5QrCode = new Html5Qrcode("reader");
-    html5QrCode.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
-      (decodedText) => {
-        // При обнаружении QR-кода временно останавливаем сканер и обрабатываем ссылку
-        html5QrCode.pause();
-        processQrCode(decodedText);
-        setTimeout(() => html5QrCode.resume(), 3000); // Возобновляем через 3 сек
-      },
-      () => {}
-    ).catch(err => console.log("Ошибка камеры:", err));
+    function initScanner() {
+      const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
+      scanner.render((qrData) => {
+        const baseUrl = localStorage.getItem("app_form_url");
+        const fio = localStorage.getItem("app_fio") || "";
 
-    loadProfile();
+        if (!baseUrl) {
+          alert("Пожалуйста, сначала вставьте ссылку на Google Форму в Настройках выше!");
+          return;
+        }
+
+        const cleanUrl = baseUrl.split('?')[0];
+        const finalUrl = `${cleanUrl}?${ENTRY_NAME}=${encodeURIComponent(fio)}&${ENTRY_COMPANY}=${encodeURIComponent(qrData)}`;
+        
+        window.location.href = finalUrl;
+      });
+    }
   </script>
 </body>
 </html>
