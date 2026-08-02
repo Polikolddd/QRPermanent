@@ -12,16 +12,20 @@
     label { display: block; margin-top: 10px; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: #606770; }
     input { width: 100%; padding: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 0.95rem; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
-    #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; }
+    .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
     .status { margin-top: 10px; font-size: 0.95rem; font-weight: 600; text-align: center; white-space: pre-line; }
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
+    .hidden { display: none !important; }
+    .user-info { font-size: 0.9rem; color: #606770; margin-bottom: 8px; text-align: center; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
 
-  <div class="card">
+  <!-- Блок настроек -->
+  <div id="settingsCard" class="card">
     <h2>⚙️ Настройки</h2>
     <label for="fio">Ваше ФИО:</label>
     <input type="text" id="fio" placeholder="Введите ФИО">
@@ -30,58 +34,114 @@
     <input type="text" id="company" placeholder="Введите название компании">
 
     <button onclick="saveSettings()">Сохранить настройки</button>
-    <div id="status" class="status success"></div>
   </div>
 
+  <!-- Маленькая кнопка для изменения настроек, если нужно -->
+  <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Изменить настройки (ФИО / Компания)</button>
+
+  <!-- Блок сканера -->
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
+    <div id="userInfo" class="user-info"></div>
     <div id="reader"></div>
     <div id="scanResult" class="status"></div>
   </div>
 
   <script>
-    // Ваша Google Форма (уже вшита):
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
+    const ENTRY_NAME = 'entry.1408210808';    // ФИО
+    const ENTRY_COMPANY = 'entry.1935797578'; // Компания
 
-    // Номера полей из Google Формы:
-    const ENTRY_NAME = 'entry.1408210808';    // Поле 1: ФИО
-    const ENTRY_COMPANY = 'entry.1935797578'; // Поле 2: Компания
-
+    let html5QrCode = null;
     let isProcessing = false; 
     let countdownTimer = null;
 
     document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("fio").value = localStorage.getItem("app_fio") || "";
-      document.getElementById("company").value = localStorage.getItem("app_company") || "";
-      initScanner();
+      const savedFio = localStorage.getItem("app_fio") || "";
+      const savedCompany = localStorage.getItem("app_company") || "";
+
+      document.getElementById("fio").value = savedFio;
+      document.getElementById("company").value = savedCompany;
+
+      // Если настройки уже есть — скрываем их и сразу запускаем камеру
+      if (savedFio && savedCompany) {
+        hideSettings();
+        updateUserInfoDisplay(savedFio, savedCompany);
+        startCamera();
+      } else {
+        showSettings();
+      }
     });
 
     function saveSettings() {
       const fio = document.getElementById("fio").value.trim();
       const company = document.getElementById("company").value.trim();
 
+      if (!fio || !company) {
+        alert("Пожалуйста, заполните и ФИО, и Компанию!");
+        return;
+      }
+
       localStorage.setItem("app_fio", fio);
       localStorage.setItem("app_company", company);
       
-      const status = document.getElementById("status");
-      status.innerText = "✓ Настройки сохранены!";
-      setTimeout(() => { status.innerText = ""; }, 3000);
+      updateUserInfoDisplay(fio, company);
+      hideSettings();
+      startCamera();
     }
 
-    function initScanner() {
-      const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
-      scanner.render((qrData) => {
-        if (isProcessing) return;
-        isProcessing = true;
+    function hideSettings() {
+      document.getElementById("settingsCard").classList.add("hidden");
+      document.getElementById("toggleSettingsBtn").classList.remove("hidden");
+    }
 
-        sendToGoogleForm(qrData);
+    function showSettings() {
+      document.getElementById("settingsCard").classList.remove("hidden");
+      document.getElementById("toggleSettingsBtn").classList.add("hidden");
+    }
+
+    function toggleSettings() {
+      const settingsCard = document.getElementById("settingsCard");
+      if (settingsCard.classList.contains("hidden")) {
+        showSettings();
+      } else {
+        hideSettings();
+      }
+    }
+
+    function updateUserInfoDisplay(fio, company) {
+      document.getElementById("userInfo").innerText = `Профиль: ${fio} (${company})`;
+    }
+
+    // Запуск основной задней камеры без меню выбора
+    function startCamera() {
+      if (html5QrCode) return; 
+
+      html5QrCode = new Html5Qrcode("reader");
+      
+      html5QrCode.start(
+        { facingMode: "environment" }, // Прямой запуск основной (задней) камеры
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        onScanSuccess,
+        onScanError
+      ).catch(err => {
+        console.error("Ошибка запуска камеры:", err);
       });
+    }
+
+    function onScanSuccess(qrData) {
+      if (isProcessing) return;
+      isProcessing = true;
+      sendToGoogleForm(qrData);
+    }
+
+    function onScanError(error) {
+      // Игнорируем кадры без QR-кодов
     }
 
     function sendToGoogleForm(qrData) {
       const fio = localStorage.getItem("app_fio") || "";
       const savedCompany = localStorage.getItem("app_company") || "";
-
       const scanResultDiv = document.getElementById("scanResult");
 
       const companyValue = savedCompany ? savedCompany : qrData;
@@ -104,7 +164,7 @@
         body: formData
       })
       .then(() => {
-        startCountdown(300); // Таймер на 5 минут (300 секунд)
+        startCountdown(300); // Таймер блокировки на 5 минут
       })
       .catch((err) => {
         scanResultDiv.className = "status error";
