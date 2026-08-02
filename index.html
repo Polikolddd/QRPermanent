@@ -14,7 +14,32 @@
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
-    .status { margin-top: 10px; font-size: 0.95rem; font-weight: 600; text-align: center; white-space: pre-line; }
+    
+    /* Стили для экрана с галочкой вместо камеры */
+    .success-overlay {
+      width: 100%;
+      min-height: 250px;
+      background: #f8f9fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 12px;
+      border: 2px dashed #42b72a;
+    }
+    .big-check {
+      font-size: 56px;
+      margin-bottom: 8px;
+      animation: popIn 0.3s ease-out;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .status { margin-top: 10px; font-size: 1rem; font-weight: 600; text-align: center; white-space: pre-line; color: #1c1e21; }
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
     .hidden { display: none !important; }
@@ -36,15 +61,22 @@
     <button onclick="saveSettings()">Сохранить настройки</button>
   </div>
 
-  <!-- Маленькая кнопка для изменения настроек, если нужно -->
+  <!-- Кнопка изменения настроек -->
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Изменить настройки (ФИО / Компания)</button>
 
   <!-- Блок сканера -->
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
     <div id="userInfo" class="user-info"></div>
+    
+    <!-- Окнок камеры -->
     <div id="reader"></div>
-    <div id="scanResult" class="status"></div>
+
+    <!-- Экран с галочкой и таймером -->
+    <div id="successOverlay" class="success-overlay hidden">
+      <div class="big-check">✅</div>
+      <div id="scanResult" class="status success">Данные успешно отправлены!</div>
+    </div>
   </div>
 
   <script>
@@ -63,7 +95,6 @@
       document.getElementById("fio").value = savedFio;
       document.getElementById("company").value = savedCompany;
 
-      // Если настройки уже есть — скрываем их и сразу запускаем камеру
       if (savedFio && savedCompany) {
         hideSettings();
         updateUserInfoDisplay(savedFio, savedCompany);
@@ -87,7 +118,10 @@
       
       updateUserInfoDisplay(fio, company);
       hideSettings();
-      startCamera();
+      
+      if (!html5QrCode) {
+        startCamera();
+      }
     }
 
     function hideSettings() {
@@ -113,19 +147,25 @@
       document.getElementById("userInfo").innerText = `Профиль: ${fio} (${company})`;
     }
 
-    // Запуск основной задней камеры без меню выбора
     function startCamera() {
+      // Скрываем галочку, показываем окно камеры
+      document.getElementById("successOverlay").classList.add("hidden");
+      document.getElementById("reader").classList.remove("hidden");
+
+      isProcessing = false; // Разрешаем сканирование снова
+
       if (html5QrCode) return; 
 
       html5QrCode = new Html5Qrcode("reader");
       
       html5QrCode.start(
-        { facingMode: "environment" }, // Прямой запуск основной (задней) камеры
+        { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         onScanSuccess,
         onScanError
       ).catch(err => {
         console.error("Ошибка запуска камеры:", err);
+        html5QrCode = null;
       });
     }
 
@@ -136,7 +176,7 @@
     }
 
     function onScanError(error) {
-      // Игнорируем кадры без QR-кодов
+      // Игнорируем фоновые ошибки сканирования
     }
 
     function sendToGoogleForm(qrData) {
@@ -155,7 +195,7 @@
       formData.append(ENTRY_NAME, fio);
       formData.append(ENTRY_COMPANY, companyValue);
 
-      scanResultDiv.className = "status";
+      scanResultDiv.className = "status success";
       scanResultDiv.innerText = "⏳ Отправка данных...";
 
       fetch(postUrl, {
@@ -164,7 +204,8 @@
         body: formData
       })
       .then(() => {
-        startCountdown(300); // Таймер блокировки на 5 минут
+        // Успешно отправили: выключаем камеру и показываем галочку с таймером
+        stopCameraAndShowSuccess();
       })
       .catch((err) => {
         scanResultDiv.className = "status error";
@@ -173,10 +214,29 @@
       });
     }
 
+    function stopCameraAndShowSuccess() {
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          html5QrCode = null;
+          document.getElementById("reader").classList.add("hidden");
+          document.getElementById("successOverlay").classList.remove("hidden");
+          startCountdown(300); // Запуск таймера на 5 минут
+        }).catch(err => {
+          console.error("Ошибка остановки:", err);
+          html5QrCode = null;
+          document.getElementById("reader").classList.add("hidden");
+          document.getElementById("successOverlay").classList.remove("hidden");
+          startCountdown(300);
+        });
+      } else {
+        document.getElementById("reader").classList.add("hidden");
+        document.getElementById("successOverlay").classList.remove("hidden");
+        startCountdown(300);
+      }
+    }
+
     function startCountdown(seconds) {
       const scanResultDiv = document.getElementById("scanResult");
-      scanResultDiv.className = "status success";
-      
       let timeLeft = seconds;
       
       if (countdownTimer) clearInterval(countdownTimer);
@@ -186,15 +246,14 @@
         const secs = timeLeft % 60;
         const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         
-        scanResultDiv.innerText = `✅ Отсканировано и отправлено!\n⏱ Таймер: ${timeString}`;
+        scanResultDiv.innerHTML = `✅ Отсканировано и отправлено!<br><span style="font-size: 1.1rem; color: #1877f2; font-weight: bold;">⏱ Таймер: ${timeString}</span>`;
         
         timeLeft--;
 
         if (timeLeft < 0) {
           clearInterval(countdownTimer);
-          scanResultDiv.innerText = "👍 Готово к новому сканированию";
-          setTimeout(() => { scanResultDiv.innerText = ""; }, 3000);
-          isProcessing = false;
+          // Время вышло — автоматически включаем камеру обратно!
+          startCamera();
         }
       }, 1000);
     }
