@@ -13,7 +13,9 @@
     input { width: 100%; padding: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 0.95rem; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; }
-    .status { margin-top: 10px; font-size: 0.85rem; color: #42b72a; font-weight: 600; text-align: center; }
+    .status { margin-top: 10px; font-size: 0.9rem; font-weight: 600; text-align: center; }
+    .success { color: #42b72a; }
+    .error { color: #fa3e3e; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
@@ -27,31 +29,41 @@
     <label for="fio">Ваше ФИО:</label>
     <input type="text" id="fio" placeholder="Введите ФИО">
 
+    <label for="company">Ваша Компания:</label>
+    <input type="text" id="company" placeholder="Введите название компании">
+
     <button onclick="saveSettings()">Сохранить настройки</button>
-    <div id="status" class="status"></div>
+    <div id="status" class="status success"></div>
   </div>
 
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
     <div id="reader"></div>
+    <div id="scanResult" class="status"></div>
   </div>
 
   <script>
-    // Ваши номера полей из формы
-    const ENTRY_NAME = 'entry.1408210808';    // ФИО
-    const ENTRY_COMPANY = 'entry.1935797578'; // Компания (данные из QR)
+    // Ваши номера полей из Google Формы:
+    const ENTRY_NAME = 'entry.1408210808';    // Поле 1: ФИО
+    const ENTRY_COMPANY = 'entry.1935797578'; // Поле 2: Компания
+
+    let isProcessing = false; // Защита от повторной отправки за 1 секунду
 
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("formUrl").value = localStorage.getItem("app_form_url") || "";
       document.getElementById("fio").value = localStorage.getItem("app_fio") || "";
+      document.getElementById("company").value = localStorage.getItem("app_company") || "";
       initScanner();
     });
 
     function saveSettings() {
       const url = document.getElementById("formUrl").value.trim();
       const fio = document.getElementById("fio").value.trim();
+      const company = document.getElementById("company").value.trim();
+
       localStorage.setItem("app_form_url", url);
       localStorage.setItem("app_fio", fio);
+      localStorage.setItem("app_company", company);
       
       const status = document.getElementById("status");
       status.innerText = "✓ Настройки сохранены!";
@@ -61,18 +73,61 @@
     function initScanner() {
       const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
       scanner.render((qrData) => {
-        const baseUrl = localStorage.getItem("app_form_url");
-        const fio = localStorage.getItem("app_fio") || "";
+        if (isProcessing) return;
+        isProcessing = true;
 
-        if (!baseUrl) {
-          alert("Пожалуйста, сначала вставьте ссылку на Google Форму в Настройках выше!");
-          return;
-        }
+        sendToGoogleForm(qrData);
+      });
+    }
 
-        const cleanUrl = baseUrl.split('?')[0];
-        const finalUrl = `${cleanUrl}?${ENTRY_NAME}=${encodeURIComponent(fio)}&${ENTRY_COMPANY}=${encodeURIComponent(qrData)}`;
+    function sendToGoogleForm(qrData) {
+      const baseUrl = localStorage.getItem("app_form_url");
+      const fio = localStorage.getItem("app_fio") || "";
+      const savedCompany = localStorage.getItem("app_company") || "";
+
+      const scanResultDiv = document.getElementById("scanResult");
+
+      if (!baseUrl) {
+        alert("Пожалуйста, сначала вставьте ссылку на Google Форму в Настройках выше!");
+        isProcessing = false;
+        return;
+      }
+
+      const companyValue = savedCompany ? savedCompany : qrData;
+
+      // Автоматическая трансформация ссылки под прямую фоновую отправку (formResponse)
+      let postUrl = baseUrl.replace(/\/viewform.*/, '/formResponse');
+      if (!postUrl.endsWith('/formResponse')) {
+        postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
+      }
+
+      const formData = new FormData();
+      formData.append(ENTRY_NAME, fio);
+      formData.append(ENTRY_COMPANY, companyValue);
+
+      scanResultDiv.className = "status";
+      scanResultDiv.innerText = "⏳ Отправка данных...";
+
+      // Фоновая отправка формы
+      fetch(postUrl, {
+        method: "POST",
+        mode: "no-cors",
+        body: formData
+      })
+      .then(() => {
+        scanResultDiv.className = "status success";
+        scanResultDiv.innerText = "✅ Данные успешно отправлены в Google Форму!";
         
-        window.location.href = finalUrl;
+        // Разрешаем сканировать следующий QR через 2 секунды
+        setTimeout(() => {
+          scanResultDiv.innerText = "";
+          isProcessing = false;
+        }, 2000);
+      })
+      .catch((err) => {
+        scanResultDiv.className = "status error";
+        scanResultDiv.innerText = "❌ Ошибка при отправке. Проверьте интернет.";
+        isProcessing = false;
       });
     }
   </script>
