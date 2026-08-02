@@ -10,12 +10,11 @@
     .card { background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
     h2 { margin-top: 0; font-size: 1.1rem; color: #1877f2; }
     label { display: block; margin-top: 10px; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: #606770; }
-    input { width: 100%; padding: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 0.95rem; }
+    input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
     
-    /* Стили для экрана с галочкой вместо камеры */
     .success-overlay {
       width: 100%;
       min-height: 250px;
@@ -29,11 +28,7 @@
       margin-top: 12px;
       border: 2px dashed #42b72a;
     }
-    .big-check {
-      font-size: 56px;
-      margin-bottom: 8px;
-      animation: popIn 0.3s ease-out;
-    }
+    .big-check { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
     @keyframes popIn {
       0% { transform: scale(0.5); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
@@ -43,36 +38,32 @@
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
     .hidden { display: none !important; }
-    .user-info { font-size: 0.9rem; color: #606770; margin-bottom: 8px; text-align: center; }
+    .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; }
+    .loading-text { font-size: 0.8rem; color: #8d949e; text-align: center; margin-top: 6px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
 
-  <!-- Блок настроек -->
+  <!-- Блок авторизации по ID -->
   <div id="settingsCard" class="card">
-    <h2>⚙️ Настройки</h2>
-    <label for="fio">Ваше ФИО:</label>
-    <input type="text" id="fio" placeholder="Введите ФИО">
+    <h2>👤 Авторизация по ID</h2>
+    <label for="operatorId">Введите ваш ID:</label>
+    <input type="text" id="operatorId" placeholder="Например: 1">
 
-    <label for="company">Ваша Компания:</label>
-    <input type="text" id="company" placeholder="Введите название компании">
-
-    <button onclick="saveSettings()">Сохранить настройки</button>
+    <button onclick="saveSettings()">Войти в систему</button>
+    <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
   </div>
 
-  <!-- Кнопка изменения настроек -->
-  <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Изменить настройки (ФИО / Компания)</button>
+  <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
   <!-- Блок сканера -->
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
     <div id="userInfo" class="user-info"></div>
     
-    <!-- Окнок камеры -->
     <div id="reader"></div>
 
-    <!-- Экран с галочкой и таймером -->
     <div id="successOverlay" class="success-overlay hidden">
       <div class="big-check">✅</div>
       <div id="scanResult" class="status success">Данные успешно отправлены!</div>
@@ -80,43 +71,111 @@
   </div>
 
   <script>
-    const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-    const ENTRY_NAME = 'entry.1408210808';    // ФИО
-    const ENTRY_COMPANY = 'entry.1935797578'; // Компания
+    // Ссылка на вашу Google Таблицу (Справочник ID)
+    const SHEET_URL_OR_ID = 'https://docs.google.com/spreadsheets/d/1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU/edit?usp=sharing'; 
 
+    // Ссылка на вашу Google Форму для сбора результатов сканирования
+    const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
+    const ENTRY_NAME = 'entry.1408210808';    // Поле ФИО оператора
+    const ENTRY_COMPANY = 'entry.1935797578'; // Поле отсканированных данных QR-кода
+
+    let operatorsDatabase = {};
+    let isDbLoaded = false;
     let html5QrCode = null;
     let isProcessing = false; 
     let countdownTimer = null;
 
+    // Автоматическое извлечение ID из любой ссылки Google Таблиц
+    function extractSheetId(input) {
+      if (!input) return '';
+      const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      return match ? match[1] : input.trim();
+    }
+
+    const SHEET_ID = extractSheetId(SHEET_URL_OR_ID);
+
     document.addEventListener("DOMContentLoaded", () => {
-      const savedFio = localStorage.getItem("app_fio") || "";
-      const savedCompany = localStorage.getItem("app_company") || "";
-
-      document.getElementById("fio").value = savedFio;
-      document.getElementById("company").value = savedCompany;
-
-      if (savedFio && savedCompany) {
-        hideSettings();
-        updateUserInfoDisplay(savedFio, savedCompany);
-        startCamera();
-      } else {
-        showSettings();
-      }
+      loadDatabaseFromGoogleSheet();
     });
 
-    function saveSettings() {
-      const fio = document.getElementById("fio").value.trim();
-      const company = document.getElementById("company").value.trim();
+    // Загрузка онлайн-базы из Google Таблицы
+    async function loadDatabaseFromGoogleSheet() {
+      const statusDiv = document.getElementById("dbStatus");
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 
-      if (!fio || !company) {
-        alert("Пожалуйста, заполните и ФИО, и Компанию!");
+      try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) throw new Error("Ошибка сети");
+        const csvText = await response.text();
+        
+        parseCsvDatabase(csvText);
+        isDbLoaded = true;
+        statusDiv.innerText = "🟢 База пользователей готова";
+        statusDiv.style.color = "#42b72a";
+
+        // Проверяем ранее сохраненный ID
+        const savedId = localStorage.getItem("app_operator_id") || "";
+        if (savedId && operatorsDatabase[savedId]) {
+          document.getElementById("operatorId").value = savedId;
+          const user = operatorsDatabase[savedId];
+          hideSettings();
+          updateUserInfoDisplay(user.fio, user.company);
+          startCamera();
+        } else {
+          showSettings();
+        }
+      } catch (err) {
+        console.error("Ошибка загрузки базы:", err);
+        statusDiv.innerText = "⚠️ Ошибка подключения к базе. Проверьте доступ («Все, у кого есть ссылка»).";
+        statusDiv.style.color = "#fa3e3e";
+      }
+    }
+
+    // Парсер CSV из Google Таблиц
+    function parseCsvDatabase(csvText) {
+      const lines = csvText.split('\n');
+      operatorsDatabase = {};
+
+      lines.forEach((line, index) => {
+        if (index === 0) return; // Пропускаем заголовок (A1: ID, B1: ФИО, C1: Компания)
+
+        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+
+        const id = cols[0];
+        const fio = cols[1];
+        const company = cols[2];
+
+        if (id && fio) {
+          operatorsDatabase[id] = { fio: fio, company: company || "" };
+        }
+      });
+    }
+
+    function saveSettings() {
+      if (!isDbLoaded) {
+        alert("База пользователей ещё загружается, подождите 2-3 секунды...");
         return;
       }
 
-      localStorage.setItem("app_fio", fio);
-      localStorage.setItem("app_company", company);
+      const inputId = document.getElementById("operatorId").value.trim();
+
+      if (!inputId) {
+        alert("Пожалуйста, введите ваш ID!");
+        return;
+      }
+
+      const user = operatorsDatabase[inputId];
+
+      if (!user) {
+        alert(`❌ Ошибка: Пользователь с ID "${inputId}" не найден в Google Таблице!`);
+        return;
+      }
+
+      localStorage.setItem("app_operator_id", inputId);
+      localStorage.setItem("app_fio", user.fio);
+      localStorage.setItem("app_company", user.company);
       
-      updateUserInfoDisplay(fio, company);
+      updateUserInfoDisplay(user.fio, user.company);
       hideSettings();
       
       if (!html5QrCode) {
@@ -144,15 +203,14 @@
     }
 
     function updateUserInfoDisplay(fio, company) {
-      document.getElementById("userInfo").innerText = `Профиль: ${fio} (${company})`;
+      document.getElementById("userInfo").innerText = `Профиль: ${fio} ${company ? '(' + company + ')' : ''}`;
     }
 
     function startCamera() {
-      // Скрываем галочку, показываем окно камеры
       document.getElementById("successOverlay").classList.add("hidden");
       document.getElementById("reader").classList.remove("hidden");
 
-      isProcessing = false; // Разрешаем сканирование снова
+      isProcessing = false;
 
       if (html5QrCode) return; 
 
@@ -175,16 +233,11 @@
       sendToGoogleForm(qrData);
     }
 
-    function onScanError(error) {
-      // Игнорируем фоновые ошибки сканирования
-    }
+    function onScanError(error) {}
 
     function sendToGoogleForm(qrData) {
       const fio = localStorage.getItem("app_fio") || "";
-      const savedCompany = localStorage.getItem("app_company") || "";
       const scanResultDiv = document.getElementById("scanResult");
-
-      const companyValue = savedCompany ? savedCompany : qrData;
 
       let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
       if (!postUrl.endsWith('/formResponse')) {
@@ -193,7 +246,7 @@
 
       const formData = new FormData();
       formData.append(ENTRY_NAME, fio);
-      formData.append(ENTRY_COMPANY, companyValue);
+      formData.append(ENTRY_COMPANY, qrData);
 
       scanResultDiv.className = "status success";
       scanResultDiv.innerText = "⏳ Отправка данных...";
@@ -204,7 +257,6 @@
         body: formData
       })
       .then(() => {
-        // Успешно отправили: выключаем камеру и показываем галочку с таймером
         stopCameraAndShowSuccess();
       })
       .catch((err) => {
@@ -220,9 +272,8 @@
           html5QrCode = null;
           document.getElementById("reader").classList.add("hidden");
           document.getElementById("successOverlay").classList.remove("hidden");
-          startCountdown(300); // Запуск таймера на 5 минут
+          startCountdown(300);
         }).catch(err => {
-          console.error("Ошибка остановки:", err);
           html5QrCode = null;
           document.getElementById("reader").classList.add("hidden");
           document.getElementById("successOverlay").classList.remove("hidden");
@@ -252,7 +303,6 @@
 
         if (timeLeft < 0) {
           clearInterval(countdownTimer);
-          // Время вышло — автоматически включаем камеру обратно!
           startCamera();
         }
       }, 1000);
