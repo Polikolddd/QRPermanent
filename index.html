@@ -23,9 +23,6 @@
 
   <div class="card">
     <h2>⚙️ Настройки</h2>
-    <label for="formUrl">Ссылка на вашу Google Форму:</label>
-    <input type="text" id="formUrl" placeholder="https://docs.google.com/forms/d/e/.../viewform">
-
     <label for="fio">Ваше ФИО:</label>
     <input type="text" id="fio" placeholder="Введите ФИО">
 
@@ -43,6 +40,10 @@
   </div>
 
   <script>
+    // Ваша Google Форма (уже вшита):
+    const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
+
+    // Номера полей из Google Формы:
     const ENTRY_NAME = 'entry.1408210808';    // Поле 1: ФИО
     const ENTRY_COMPANY = 'entry.1935797578'; // Поле 2: Компания
 
@@ -50,18 +51,15 @@
     let countdownTimer = null;
 
     document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("formUrl").value = localStorage.getItem("app_form_url") || "";
       document.getElementById("fio").value = localStorage.getItem("app_fio") || "";
       document.getElementById("company").value = localStorage.getItem("app_company") || "";
       initScanner();
     });
 
     function saveSettings() {
-      const url = document.getElementById("formUrl").value.trim();
       const fio = document.getElementById("fio").value.trim();
       const company = document.getElementById("company").value.trim();
 
-      localStorage.setItem("app_form_url", url);
       localStorage.setItem("app_fio", fio);
       localStorage.setItem("app_company", company);
       
@@ -81,21 +79,14 @@
     }
 
     function sendToGoogleForm(qrData) {
-      const baseUrl = localStorage.getItem("app_form_url");
       const fio = localStorage.getItem("app_fio") || "";
       const savedCompany = localStorage.getItem("app_company") || "";
 
       const scanResultDiv = document.getElementById("scanResult");
 
-      if (!baseUrl) {
-        alert("Пожалуйста, сначала вставьте ссылку на Google Форму в Настройках выше!");
-        isProcessing = false;
-        return;
-      }
-
       const companyValue = savedCompany ? savedCompany : qrData;
 
-      let postUrl = baseUrl.replace(/\/viewform.*/, '/formResponse');
+      let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
       if (!postUrl.endsWith('/formResponse')) {
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
       }
@@ -113,8 +104,7 @@
         body: formData
       })
       .then(() => {
-        // Запуск таймера на 5 минут (300 секунд)
-        startCountdown(300);
+        startCountdown(300); // Таймер на 5 минут (300 секунд)
       })
       .catch((err) => {
         scanResultDiv.className = "status error";
