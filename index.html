@@ -45,7 +45,7 @@
     .error { color: #fa3e3e; }
     .hidden { display: none !important; }
     .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; }
-    .loading-text { font-size: 0.8rem; color: #8d949e; text-align: center; margin-top: 6px; }
+    .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -86,12 +86,27 @@
   </div>
 
   <script>
-    const SHEET_URL_OR_ID = 'https://docs.google.com/spreadsheets/d/1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU/edit?usp=sharing'; 
+    // Принудительная очистка PWA / Service Worker КЭШа
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        for (let name of names) caches.delete(name);
+      });
+    }
+
+    const SHEET_URL_OR_ID = '1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU'; 
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
     const ENTRY_NAME = 'entry.1408210808';    
     const ENTRY_COMPANY = 'entry.1935797578'; 
 
     let operatorsDatabase = {};
+    let loadedCount = 0;
     let isDbLoaded = false;
     let html5QrCode = null;
     let isProcessing = false; 
@@ -100,20 +115,16 @@
     let availableCameras = [];
     let currentCameraIndex = 0;
 
-    function extractSheetId(input) {
-      if (!input) return '';
-      const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      return match ? match[1] : input.trim();
-    }
-
-    const SHEET_ID = extractSheetId(SHEET_URL_OR_ID);
-
     document.addEventListener("DOMContentLoaded", () => {
       loadDatabaseFromGoogleSheet();
     });
 
     function cleanString(str) {
-      return String(str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') 
+        .replace(/\s+/g, ' ')                  
+        .trim();
     }
 
     function getCleanDigits(str) {
@@ -123,11 +134,13 @@
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
       const timestamp = new Date().getTime();
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&t=${timestamp}`;
+      
+      // Прямой выгруз CSV файла без gviz преобразовний
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_URL_OR_ID}/export?format=csv&id=${SHEET_URL_OR_ID}&nocache=${timestamp}`;
 
       try {
         const response = await fetch(csvUrl);
-        if (!response.ok) throw new Error("Ошибка сети");
+        if (!response.ok) throw new Error("Ошибка загрузки");
         const csvText = await response.text();
         
         Papa.parse(csvText, {
@@ -135,20 +148,21 @@
           complete: function(results) {
             parseParsedRows(results.data);
             isDbLoaded = true;
-            statusDiv.innerText = "🟢 База пользователей готова";
+            statusDiv.innerText = `🟢 База готова (Загружено: ${loadedCount} чел.)`;
             statusDiv.style.color = "#42b72a";
             checkAutoLogin();
           }
         });
       } catch (err) {
-        console.error("Ошибка загрузки базы:", err);
-        statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
+        console.error("Ошибка базы:", err);
+        statusDiv.innerText = "⚠️ Ошибка подключения к базе Таблицы.";
         statusDiv.style.color = "#fa3e3e";
       }
     }
 
     function parseParsedRows(rows) {
       operatorsDatabase = {};
+      loadedCount = 0;
 
       rows.forEach((cols, index) => {
         if (index === 0 || cols.length < 2) return;
@@ -165,6 +179,7 @@
           if (digitId) {
             operatorsDatabase[digitId] = userObj;
           }
+          loadedCount++;
         }
       });
     }
@@ -194,7 +209,7 @@
 
     function saveSettings() {
       if (!isDbLoaded) {
-        alert("База пользователей ещё загружается, подождите 2 секунды...");
+        alert("База пользователей ещё загружается...");
         return;
       }
 
@@ -207,7 +222,7 @@
       const user = findUser(inputId);
 
       if (!user) {
-        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!`);
+        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!\n\nЗагружено записей из базы: ${loadedCount}`);
         return;
       }
 
@@ -287,7 +302,7 @@
           onScanError
         );
       } catch (err) {
-        console.error("Ошибка запуска камеры:", err);
+        console.error("Ошибка камеры:", err);
         try {
           await html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 260, height: 260 } }, onScanSuccess, onScanError);
         } catch(e) { html5QrCode = null; }
@@ -309,7 +324,6 @@
       await html5QrCode.start(nextCamera.id, { fps: 15, qrbox: { width: 260, height: 260 } }, onScanSuccess, onScanError);
     }
 
-    // Проверка разрешения (столбец E) при сканировании
     function onScanSuccess(qrData) {
       if (isProcessing) return;
       isProcessing = true;
@@ -319,7 +333,6 @@
 
       const permissionStatus = user && user.permission ? user.permission.toLowerCase() : "";
 
-      // Если в столбце E не YES — БЛОКИРУЕМ!
       if (permissionStatus !== "yes") {
         stopCameraAndShowError(`⛔ Ошибка доступа!\nУ сотрудника ${user ? user.fio : ''}\nв столбце E стоит "${user ? user.permission : 'No'}".\nДанные НЕ отправлены!`);
         return;
