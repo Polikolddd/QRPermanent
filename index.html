@@ -16,6 +16,7 @@
     .btn-cam-switch { background: #42b72a; color: #fff; margin-top: 8px; font-size: 0.9rem; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
     
+    /* Зелёный оверлей (Успех) */
     .success-overlay {
       width: 100%;
       min-height: 250px;
@@ -29,7 +30,23 @@
       margin-top: 12px;
       border: 2px dashed #42b72a;
     }
-    .big-check { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
+
+    /* Красный оверлей (Ошибка/Запрет) */
+    .error-overlay {
+      width: 100%;
+      min-height: 250px;
+      background: #fff5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 12px;
+      border: 2px dashed #fa3e3e;
+    }
+
+    .big-icon { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
     @keyframes popIn {
       0% { transform: scale(0.5); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
@@ -46,6 +63,7 @@
 </head>
 <body>
 
+  <!-- Блок авторизации по ID -->
   <div id="settingsCard" class="card">
     <h2>👤 Авторизация по ID</h2>
     <label for="operatorId">Введите ваш ID:</label>
@@ -57,6 +75,7 @@
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
+  <!-- Блок сканера -->
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
     <div id="userInfo" class="user-info"></div>
@@ -64,9 +83,17 @@
     <div id="reader"></div>
     <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить объектив (Основная / Широкая)</button>
 
+    <!-- Зелёный экран при успешной отправке -->
     <div id="successOverlay" class="success-overlay hidden">
-      <div class="big-check">✅</div>
+      <div class="big-icon">✅</div>
       <div id="scanResult" class="status success">Данные успешно отправлены!</div>
+    </div>
+
+    <!-- Красный экран при отсутствии разрешения (Столбец E = No) -->
+    <div id="errorOverlay" class="error-overlay hidden">
+      <div class="big-icon">❌</div>
+      <div class="status error">ДОСТУП ЗАПРЕЩЁН!<br>У вас стоит "No" в разрешении на питание.<br><b>Данные НЕ отправлены!</b></div>
+      <button onclick="resetScannerFromError()" style="background: #fa3e3e; margin-top: 16px;">🔄 Попробовать снова</button>
     </div>
   </div>
 
@@ -143,9 +170,14 @@
         const id = cols[0];
         const fio = cols[1];
         const company = cols[2];
+        const permission = cols[4]; // Читаем Столбец E (5-я колонка)
 
         if (id && fio) {
-          operatorsDatabase[id] = { fio: fio, company: company || "" };
+          operatorsDatabase[id] = { 
+            fio: fio, 
+            company: company || "",
+            permission: permission ? permission.trim() : "No"
+          };
         }
       });
     }
@@ -173,6 +205,7 @@
       localStorage.setItem("app_operator_id", inputId);
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
+      localStorage.setItem("app_permission", user.permission);
       
       updateUserInfoDisplay(user.fio, user.company);
       hideSettings();
@@ -205,9 +238,9 @@
       document.getElementById("userInfo").innerText = `Профиль: ${fio} ${company ? '(' + company + ')' : ''}`;
     }
 
-    // Запуск камеры со строгой привязкой к задним объективам
     async function startCamera() {
       document.getElementById("successOverlay").classList.add("hidden");
+      document.getElementById("errorOverlay").classList.add("hidden");
       document.getElementById("reader").classList.remove("hidden");
 
       isProcessing = false;
@@ -219,10 +252,9 @@
       try {
         const allCameras = await Html5Qrcode.getCameras();
         
-        // Строго исключаем передние (селфи) камеры
         availableCameras = allCameras.filter(c => {
           const label = c.label.toLowerCase();
-          const isFront = label.includes("front") || label.includes("user") || label.includes("передн") || label.includes("selfie") || label.includes("селфи") || label.includes("front-camera");
+          const isFront = label.includes("front") || label.includes("user") || label.includes("передн") || label.includes("selfie") || label.includes("front-camera");
           return !isFront;
         });
 
@@ -230,7 +262,6 @@
           availableCameras = allCameras;
         }
 
-        // Ищем основную заднюю камеру 1x (пропускаем 0.6x / wide / depth)
         let primaryCamera = availableCameras.find(c => {
           const label = c.label.toLowerCase();
           return !label.includes("0.6") && !label.includes("wide") && !label.includes("ultra") && !label.includes("широк") && !label.includes("depth");
@@ -262,7 +293,7 @@
           onScanError
         );
       } catch (err) {
-        console.error("Ошибка при поиске камеры, включаем стандартный режим:", err);
+        console.error("Ошибка запуска камеры:", err);
         try {
           await html5QrCode.start(
             { facingMode: "environment" },
@@ -277,7 +308,6 @@
       }
     }
 
-    // Ручное переключение камеры (только среди задних)
     async function switchCamera() {
       if (!availableCameras || availableCameras.length < 2) return;
 
@@ -303,9 +333,22 @@
       );
     }
 
+    // Обработка успешного сканирования QR-кода
     function onScanSuccess(qrData) {
       if (isProcessing) return;
       isProcessing = true;
+
+      const currentId = localStorage.getItem("app_operator_id") || "";
+      const user = operatorsDatabase[currentId];
+      const permission = user ? user.permission : (localStorage.getItem("app_permission") || "No");
+
+      // ПРОВЕРКА РАЗРЕШЕНИЯ ИЗ СТОЛБЦА E
+      if (permission.toLowerCase() !== "yes") {
+        stopCameraAndShowError(); // БЛОКИРУЕМ и показываем красную ошибку
+        return;
+      }
+
+      // Если Разрешение == "Yes" — отправляем форму
       sendToGoogleForm(qrData);
     }
 
@@ -362,6 +405,29 @@
         document.getElementById("successOverlay").classList.remove("hidden");
         startCountdown(300);
       }
+    }
+
+    function stopCameraAndShowError() {
+      document.getElementById("switchCamBtn").classList.add("hidden");
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          html5QrCode = null;
+          document.getElementById("reader").classList.add("hidden");
+          document.getElementById("errorOverlay").classList.remove("hidden");
+        }).catch(err => {
+          html5QrCode = null;
+          document.getElementById("reader").classList.add("hidden");
+          document.getElementById("errorOverlay").classList.remove("hidden");
+        });
+      } else {
+        document.getElementById("reader").classList.add("hidden");
+        document.getElementById("errorOverlay").classList.remove("hidden");
+      }
+    }
+
+    function resetScannerFromError() {
+      document.getElementById("errorOverlay").classList.add("hidden");
+      startCamera();
     }
 
     function startCountdown(seconds) {
