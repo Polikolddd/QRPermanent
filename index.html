@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>QR Scanner PWA</title>
   <style>
     * { box-sizing: border-box; }
@@ -45,6 +48,7 @@
     .loading-text { font-size: 0.8rem; color: #8d949e; text-align: center; margin-top: 6px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
@@ -108,30 +112,34 @@
       loadDatabaseFromGoogleSheet();
     });
 
+    function cleanString(str) {
+      return String(str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    }
+
+    function getCleanDigits(str) {
+      return cleanString(str).replace(/\D/g, '');
+    }
+
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+      const timestamp = new Date().getTime();
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&t=${timestamp}`;
 
       try {
         const response = await fetch(csvUrl);
         if (!response.ok) throw new Error("Ошибка сети");
         const csvText = await response.text();
         
-        parseCsvDatabase(csvText);
-        isDbLoaded = true;
-        statusDiv.innerText = "🟢 База пользователей готова";
-        statusDiv.style.color = "#42b72a";
-
-        const savedId = localStorage.getItem("app_operator_id") || "";
-        if (savedId && operatorsDatabase[savedId]) {
-          document.getElementById("operatorId").value = savedId;
-          const user = operatorsDatabase[savedId];
-          hideSettings();
-          updateUserInfoDisplay(user.fio, user.company);
-          startCamera();
-        } else {
-          showSettings();
-        }
+        Papa.parse(csvText, {
+          skipEmptyLines: true,
+          complete: function(results) {
+            parseParsedRows(results.data);
+            isDbLoaded = true;
+            statusDiv.innerText = "🟢 База пользователей готова";
+            statusDiv.style.color = "#42b72a";
+            checkAutoLogin();
+          }
+        });
       } catch (err) {
         console.error("Ошибка загрузки базы:", err);
         statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
@@ -139,74 +147,71 @@
       }
     }
 
-    // Надёжный парсер CSV с поддержкой кавычек
-    function parseCsvDatabase(csvText) {
+    function parseParsedRows(rows) {
       operatorsDatabase = {};
-      const rows = parseCSVLines(csvText);
 
       rows.forEach((cols, index) => {
         if (index === 0 || cols.length < 2) return;
 
-        const id = (cols[0] || "").trim();
-        const fio = (cols[1] || "").trim();
-        const company = (cols[2] || "").trim();
-        const permission = (cols[4] || "No").trim(); // Столбец E (Разрешение Yes/No)
+        const rawId = cleanString(cols[0]);
+        const digitId = getCleanDigits(rawId);
+        const fio = cleanString(cols[1]);
+        const company = cleanString(cols[2]);
+        const permission = cleanString(cols[4] || "No");
 
-        if (id && fio) {
-          operatorsDatabase[id] = { 
-            fio: fio, 
-            company: company, 
-            permission: permission 
-          };
+        if (rawId && fio) {
+          const userObj = { fio: fio, company: company, permission: permission };
+          operatorsDatabase[rawId] = userObj;
+          if (digitId) {
+            operatorsDatabase[digitId] = userObj;
+          }
         }
       });
     }
 
-    function parseCSVLines(text) {
-      let p = '', c = '', r = [];
-      let q = false;
-      let row = [''];
-      for (let i = 0; i < text.length; i++) {
-        c = text[i];
-        let next = text[i+1];
-        if (c === '"') {
-          if (q && next === '"') { row[row.length - 1] += '"'; i++; }
-          else { q = !q; }
-        } else if (c === ',' && !q) {
-          row.push('');
-        } else if ((c === '\r' || c === '\n') && !q) {
-          if (c === '\r' && next === '\n') { i++; }
-          r.push(row);
-          row = [''];
+    function findUser(idInput) {
+      const cleanedInput = cleanString(idInput);
+      const digitsOnly = getCleanDigits(idInput);
+      return operatorsDatabase[cleanedInput] || operatorsDatabase[digitsOnly] || null;
+    }
+
+    function checkAutoLogin() {
+      const savedId = localStorage.getItem("app_operator_id") || "";
+      if (savedId) {
+        const user = findUser(savedId);
+        if (user) {
+          document.getElementById("operatorId").value = savedId;
+          hideSettings();
+          updateUserInfoDisplay(user.fio, user.company);
+          startCamera();
         } else {
-          row[row.length - 1] += c;
+          showSettings();
         }
+      } else {
+        showSettings();
       }
-      if (row.length > 1 || row[0] !== '') r.push(row);
-      return r;
     }
 
     function saveSettings() {
       if (!isDbLoaded) {
-        alert("База пользователей ещё загружается, подождите 2-3 секунды...");
+        alert("База пользователей ещё загружается, подождите 2 секунды...");
         return;
       }
 
-      const inputId = document.getElementById("operatorId").value.trim();
-
-      if (!inputId) {
+      const inputId = document.getElementById("operatorId").value;
+      if (!inputId.trim()) {
         alert("Пожалуйста, введите ваш ID!");
         return;
       }
 
-      const user = operatorsDatabase[inputId];
+      const user = findUser(inputId);
 
       if (!user) {
-        alert(`❌ Ошибка: Пользователь с ID "${inputId}" не найден в Google Таблице!`);
+        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!`);
         return;
       }
 
-      localStorage.setItem("app_operator_id", inputId);
+      localStorage.setItem("app_operator_id", inputId.trim());
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
       
@@ -247,7 +252,6 @@
       document.getElementById("reader").classList.remove("hidden");
 
       isProcessing = false;
-
       if (html5QrCode) return; 
 
       html5QrCode = new Html5Qrcode("reader");
@@ -305,23 +309,22 @@
       await html5QrCode.start(nextCamera.id, { fps: 15, qrbox: { width: 260, height: 260 } }, onScanSuccess, onScanError);
     }
 
-    // ТУТ ПРОИСХОДИТ ПРОВЕРКА СТОЛБЦА E ПРИ СКАНИРОВАНИИ
+    // Проверка разрешения (столбец E) при сканировании
     function onScanSuccess(qrData) {
       if (isProcessing) return;
       isProcessing = true;
 
       const savedId = localStorage.getItem("app_operator_id") || "";
-      const user = operatorsDatabase[savedId];
+      const user = findUser(savedId);
 
-      const permissionStatus = user && user.permission ? user.permission.trim().toLowerCase() : "";
+      const permissionStatus = user && user.permission ? user.permission.toLowerCase() : "";
 
-      // Если в столбце E написано НЕ "yes" (например, "no") -> БЛОКИРУЕМ!
+      // Если в столбце E не YES — БЛОКИРУЕМ!
       if (permissionStatus !== "yes") {
         stopCameraAndShowError(`⛔ Ошибка доступа!\nУ сотрудника ${user ? user.fio : ''}\nв столбце E стоит "${user ? user.permission : 'No'}".\nДанные НЕ отправлены!`);
         return;
       }
 
-      // Если "yes" -> отправляем в Google Форму
       sendToGoogleForm(qrData);
     }
 
@@ -353,7 +356,6 @@
       });
     }
 
-    // Экран блокировки (при No)
     function stopCameraAndShowError(errorText) {
       document.getElementById("switchCamBtn").classList.add("hidden");
       const errorDiv = document.getElementById("errorResult");
@@ -363,7 +365,6 @@
         document.getElementById("reader").classList.add("hidden");
         document.getElementById("errorOverlay").classList.remove("hidden");
         
-        // Перезапуск сканера через 4 секунды
         setTimeout(() => {
           document.getElementById("errorOverlay").classList.add("hidden");
           startCamera();
@@ -383,7 +384,6 @@
       }
     }
 
-    // Экран успеха (при Yes)
     function stopCameraAndShowSuccess() {
       document.getElementById("switchCamBtn").classList.add("hidden");
       const hideAndShowOverlay = () => {
