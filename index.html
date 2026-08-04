@@ -13,6 +13,7 @@
     input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
+    .btn-cam-switch { background: #42b72a; color: #fff; margin-top: 8px; font-size: 0.9rem; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
     
     .success-overlay {
@@ -45,8 +46,7 @@
 </head>
 <body>
 
-  <!-- Блок авторизации по ID -->
-  <div id="settingsCard" class="card hidder">
+  <div id="settingsCard" class="card">
     <h2>👤 Авторизация по ID</h2>
     <label for="operatorId">Введите ваш ID:</label>
     <input type="text" id="operatorId" placeholder="Например: 1">
@@ -57,12 +57,12 @@
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
-  <!-- Блок сканера -->
   <div class="card">
     <h2>📷 Сканер QR-кода</h2>
     <div id="userInfo" class="user-info"></div>
     
     <div id="reader"></div>
+    <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить камеру (1x / 0.6x)</button>
 
     <div id="successOverlay" class="success-overlay hidden">
       <div class="big-check">✅</div>
@@ -76,14 +76,17 @@
 
     // Ссылка на Google Форму
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-    const ENTRY_NAME = 'entry.1408210808';    // Поле ФИО оператора
-    const ENTRY_COMPANY = 'entry.1935797578'; // Поле Компания оператора
+    const ENTRY_NAME = 'entry.1408210808';    // ФИО оператора
+    const ENTRY_COMPANY = 'entry.1935797578'; // Компания оператора
 
     let operatorsDatabase = {};
     let isDbLoaded = false;
     let html5QrCode = null;
     let isProcessing = false; 
     let countdownTimer = null;
+
+    let availableCameras = [];
+    let currentCameraIndex = 0;
 
     function extractSheetId(input) {
       if (!input) return '';
@@ -202,7 +205,8 @@
       document.getElementById("userInfo").innerText = `Профиль: ${fio} ${company ? '(' + company + ')' : ''}`;
     }
 
-    function startCamera() {
+    // Запуск камеры с фильтрацией 0.6x линз
+    async function startCamera() {
       document.getElementById("successOverlay").classList.add("hidden");
       document.getElementById("reader").classList.remove("hidden");
 
@@ -211,16 +215,85 @@
       if (html5QrCode) return; 
 
       html5QrCode = new Html5Qrcode("reader");
-      
-      html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        onScanSuccess,
-        onScanError
-      ).catch(err => {
+
+      try {
+        availableCameras = await Html5Qrcode.getCameras();
+        let targetCameraId = null;
+
+        if (availableCameras && availableCameras.length > 0) {
+          // Ищем задние камеры
+          const backCameras = availableCameras.filter(c => {
+            const label = c.label.toLowerCase();
+            return label.includes("back") || label.includes("rear") || label.includes("задн") || label.includes("environment") || label.includes("0");
+          });
+
+          // Исключаем 0.6x / wide / ultrawide
+          const primary1xCamera = backCameras.find(c => {
+            const label = c.label.toLowerCase();
+            return !label.includes("0.6") && !label.includes("wide") && !label.includes("ultra") && !label.includes("широк");
+          });
+
+          if (primary1xCamera) {
+            targetCameraId = primary1xCamera.id;
+            currentCameraIndex = availableCameras.findIndex(c => c.id === primary1xCamera.id);
+          } else if (backCameras.length > 0) {
+            targetCameraId = backCameras[0].id;
+            currentCameraIndex = availableCameras.findIndex(c => c.id === backCameras[0].id);
+          } else {
+            targetCameraId = availableCameras[0].id;
+            currentCameraIndex = 0;
+          }
+
+          if (availableCameras.length > 1) {
+            document.getElementById("switchCamBtn").classList.remove("hidden");
+          }
+        }
+
+        const cameraConfig = targetCameraId ? targetCameraId : { facingMode: "environment" };
+
+        await html5QrCode.start(
+          cameraConfig,
+          { 
+            fps: 15, 
+            qrbox: { width: 260, height: 260 },
+            videoConstraints: {
+              focusMode: "continuous"
+            }
+          },
+          onScanSuccess,
+          onScanError
+        );
+      } catch (err) {
         console.error("Ошибка запуска камеры:", err);
         html5QrCode = null;
-      });
+      }
+    }
+
+    // Ручное переключение камеры по кнопке
+    async function switchCamera() {
+      if (!availableCameras || availableCameras.length < 2) return;
+
+      currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+      const nextCamera = availableCameras[currentCameraIndex];
+
+      if (html5QrCode) {
+        try {
+          await html5QrCode.stop();
+        } catch(e) {}
+        html5QrCode = null;
+      }
+
+      html5QrCode = new Html5Qrcode("reader");
+      await html5QrCode.start(
+        nextCamera.id,
+        { 
+          fps: 15, 
+          qrbox: { width: 260, height: 260 },
+          videoConstraints: { focusMode: "continuous" }
+        },
+        onScanSuccess,
+        onScanError
+      );
     }
 
     function onScanSuccess(qrData) {
@@ -243,7 +316,7 @@
 
       const formData = new FormData();
       formData.append(ENTRY_NAME, fio);
-      formData.append(ENTRY_COMPANY, company); // Теперь отправляется компания оператора!
+      formData.append(ENTRY_COMPANY, company);
 
       scanResultDiv.className = "status success";
       scanResultDiv.innerText = "⏳ Отправка данных...";
@@ -264,6 +337,7 @@
     }
 
     function stopCameraAndShowSuccess() {
+      document.getElementById("switchCamBtn").classList.add("hidden");
       if (html5QrCode) {
         html5QrCode.stop().then(() => {
           html5QrCode = null;
