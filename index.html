@@ -62,7 +62,7 @@
     <div id="userInfo" class="user-info"></div>
     
     <div id="reader"></div>
-    <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить камеру (1x / 0.6x)</button>
+    <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить объектив (Основная / Широкая)</button>
 
     <div id="successOverlay" class="success-overlay hidden">
       <div class="big-check">✅</div>
@@ -205,7 +205,7 @@
       document.getElementById("userInfo").innerText = `Профиль: ${fio} ${company ? '(' + company + ')' : ''}`;
     }
 
-    // Запуск камеры с фильтрацией 0.6x линз
+    // Запуск камеры со строгой привязкой к задним объективам
     async function startCamera() {
       document.getElementById("successOverlay").classList.add("hidden");
       document.getElementById("reader").classList.remove("hidden");
@@ -217,59 +217,67 @@
       html5QrCode = new Html5Qrcode("reader");
 
       try {
-        availableCameras = await Html5Qrcode.getCameras();
-        let targetCameraId = null;
+        const allCameras = await Html5Qrcode.getCameras();
+        
+        // Строго исключаем передние (селфи) камеры
+        availableCameras = allCameras.filter(c => {
+          const label = c.label.toLowerCase();
+          const isFront = label.includes("front") || label.includes("user") || label.includes("передн") || label.includes("selfie") || label.includes("селфи") || label.includes("front-camera");
+          return !isFront;
+        });
 
-        if (availableCameras && availableCameras.length > 0) {
-          // Ищем задние камеры
-          const backCameras = availableCameras.filter(c => {
-            const label = c.label.toLowerCase();
-            return label.includes("back") || label.includes("rear") || label.includes("задн") || label.includes("environment") || label.includes("0");
-          });
-
-          // Исключаем 0.6x / wide / ultrawide
-          const primary1xCamera = backCameras.find(c => {
-            const label = c.label.toLowerCase();
-            return !label.includes("0.6") && !label.includes("wide") && !label.includes("ultra") && !label.includes("широк");
-          });
-
-          if (primary1xCamera) {
-            targetCameraId = primary1xCamera.id;
-            currentCameraIndex = availableCameras.findIndex(c => c.id === primary1xCamera.id);
-          } else if (backCameras.length > 0) {
-            targetCameraId = backCameras[0].id;
-            currentCameraIndex = availableCameras.findIndex(c => c.id === backCameras[0].id);
-          } else {
-            targetCameraId = availableCameras[0].id;
-            currentCameraIndex = 0;
-          }
-
-          if (availableCameras.length > 1) {
-            document.getElementById("switchCamBtn").classList.remove("hidden");
-          }
+        if (availableCameras.length === 0) {
+          availableCameras = allCameras;
         }
 
-        const cameraConfig = targetCameraId ? targetCameraId : { facingMode: "environment" };
+        // Ищем основную заднюю камеру 1x (пропускаем 0.6x / wide / depth)
+        let primaryCamera = availableCameras.find(c => {
+          const label = c.label.toLowerCase();
+          return !label.includes("0.6") && !label.includes("wide") && !label.includes("ultra") && !label.includes("широк") && !label.includes("depth");
+        });
+
+        if (!primaryCamera && availableCameras.length > 0) {
+          primaryCamera = availableCameras[0];
+        }
+
+        let cameraConstraint;
+        if (primaryCamera && primaryCamera.id) {
+          cameraConstraint = primaryCamera.id;
+          currentCameraIndex = availableCameras.findIndex(c => c.id === primaryCamera.id);
+        } else {
+          cameraConstraint = { facingMode: "environment" };
+        }
+
+        if (availableCameras.length > 1) {
+          document.getElementById("switchCamBtn").classList.remove("hidden");
+        }
 
         await html5QrCode.start(
-          cameraConfig,
+          cameraConstraint,
           { 
             fps: 15, 
-            qrbox: { width: 260, height: 260 },
-            videoConstraints: {
-              focusMode: "continuous"
-            }
+            qrbox: { width: 260, height: 260 }
           },
           onScanSuccess,
           onScanError
         );
       } catch (err) {
-        console.error("Ошибка запуска камеры:", err);
-        html5QrCode = null;
+        console.error("Ошибка при поиске камеры, включаем стандартный режим:", err);
+        try {
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 15, qrbox: { width: 260, height: 260 } },
+            onScanSuccess,
+            onScanError
+          );
+        } catch(e) {
+          console.error("Не удалось запустить камеру:", e);
+          html5QrCode = null;
+        }
       }
     }
 
-    // Ручное переключение камеры по кнопке
+    // Ручное переключение камеры (только среди задних)
     async function switchCamera() {
       if (!availableCameras || availableCameras.length < 2) return;
 
@@ -288,8 +296,7 @@
         nextCamera.id,
         { 
           fps: 15, 
-          qrbox: { width: 260, height: 260 },
-          videoConstraints: { focusMode: "continuous" }
+          qrbox: { width: 260, height: 260 }
         },
         onScanSuccess,
         onScanError
