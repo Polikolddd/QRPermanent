@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>QR Scanner PWA</title>
+  <title>QR Meal Check-in</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, sans-serif; background: #f0f2f5; margin: 0; padding: 16px; color: #1c1e21; }
@@ -64,21 +64,21 @@
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
-  <!-- Блок сканера -->
+  <!-- Блок сканера / Статуса -->
   <div class="card">
-    <h2>📷 Сканер QR-кода</h2>
+    <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
     
     <div id="reader"></div>
     <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить объектив</button>
 
-    <!-- Уведомление об успехе (Yes) -->
+    <!-- Уведомление об успехе -->
     <div id="successOverlay" class="overlay success-overlay hidden">
       <div class="big-icon">✅</div>
-      <div id="scanResult" class="status success">Данные успешно отправлены!</div>
+      <div id="scanResult" class="status success">Питание отмечено!</div>
     </div>
 
-    <!-- Уведомление об отказе (No или Неверный QR) -->
+    <!-- Уведомление об отказе -->
     <div id="errorOverlay" class="overlay error-overlay hidden">
       <div class="big-icon">⛔</div>
       <div id="errorResult" class="status error">Питание запрещено!</div>
@@ -86,18 +86,12 @@
   </div>
 
   <script>
-    // Очистка PWA Service Worker КЭШа
+    // Очистка КЭШа
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (let registration of registrations) {
-          registration.unregister();
-        }
-      });
+      navigator.serviceWorker.getRegistrations().then(r => r.forEach(reg => reg.unregister()));
     }
     if ('caches' in window) {
-      caches.keys().then(names => {
-        for (let name of names) caches.delete(name);
-      });
+      caches.keys().then(names => names.forEach(name => caches.delete(name)));
     }
 
     const SHEET_URL_OR_ID = '1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU'; 
@@ -109,22 +103,14 @@
     let loadedCount = 0;
     let isDbLoaded = false;
     let html5QrCode = null;
-    let isProcessing = false; 
-    let countdownTimer = null;
-
-    let availableCameras = [];
-    let currentCameraIndex = 0;
 
     document.addEventListener("DOMContentLoaded", () => {
       loadDatabaseFromGoogleSheet();
     });
 
     function cleanString(str) {
-      if (str === null || str === undefined) return '';
-      return String(str)
-        .replace(/[\u200B-\u200D\uFEFF]/g, '') 
-        .replace(/\s+/g, ' ')                  
-        .trim();
+      if (!str) return '';
+      return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
     }
 
     function getCleanDigits(str) {
@@ -146,14 +132,16 @@
           complete: function(results) {
             parseParsedRows(results.data);
             isDbLoaded = true;
-            statusDiv.innerText = `🟢 База готова (Загружено: ${loadedCount} чел.)`;
+            statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)`;
             statusDiv.style.color = "#42b72a";
-            checkAutoLogin();
+            
+            // Запуск автоматической проверки при переходе по QR
+            processAutoCheckin();
           }
         });
       } catch (err) {
         console.error("Ошибка базы:", err);
-        statusDiv.innerText = "⚠️ Ошибка подключения к базе Таблицы.";
+        statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
         statusDiv.style.color = "#fa3e3e";
       }
     }
@@ -174,9 +162,7 @@
         if (rawId && fio) {
           const userObj = { fio: fio, company: company, permission: permission };
           operatorsDatabase[rawId] = userObj;
-          if (digitId) {
-            operatorsDatabase[digitId] = userObj;
-          }
+          if (digitId) operatorsDatabase[digitId] = userObj;
           loadedCount++;
         }
       });
@@ -188,20 +174,32 @@
       return operatorsDatabase[cleanedInput] || operatorsDatabase[digitsOnly] || null;
     }
 
-    function checkAutoLogin() {
+    // ЛОГИКА АВТОМАТИЧЕСКОЙ ОТМЕТКИ
+    function processAutoCheckin() {
       const savedId = localStorage.getItem("app_operator_id") || "";
-      if (savedId) {
-        const user = findUser(savedId);
-        if (user) {
-          document.getElementById("operatorId").value = savedId;
-          hideSettings();
-          updateUserInfoDisplay(user.fio, user.company);
-          startCamera();
-        } else {
-          showSettings();
-        }
-      } else {
+      if (!savedId) {
         showSettings();
+        return;
+      }
+
+      const user = findUser(savedId);
+      if (!user) {
+        showSettings();
+        alert(`❌ Ваш ID (${savedId}) не найден в базе. Введите ID повторно.`);
+        return;
+      }
+
+      hideSettings();
+      updateUserInfoDisplay(user.fio, user.company);
+
+      // Проверяем разрешение (столбец E)
+      const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
+
+      if (permissionStatus !== "yes") {
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус в столбце E: "${user.permission}".\nОтметка НЕ отправлена!`);
+      } else {
+        // Если Разрешено — сразу автоматически отправляем данные!
+        sendToGoogleFormAuto(user);
       }
     }
 
@@ -218,9 +216,8 @@
       }
 
       const user = findUser(inputId);
-
       if (!user) {
-        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!\n\nЗагружено записей из базы: ${loadedCount}`);
+        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!`);
         return;
       }
 
@@ -228,12 +225,7 @@
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
       
-      updateUserInfoDisplay(user.fio, user.company);
-      hideSettings();
-      
-      if (!html5QrCode) {
-        startCamera();
-      }
+      processAutoCheckin();
     }
 
     function hideSettings() {
@@ -248,125 +240,23 @@
 
     function toggleSettings() {
       const settingsCard = document.getElementById("settingsCard");
-      if (settingsCard.classList.contains("hidden")) {
-        showSettings();
-      } else {
-        hideSettings();
-      }
+      if (settingsCard.classList.contains("hidden")) showSettings();
+      else hideSettings();
     }
 
     function updateUserInfoDisplay(fio, company) {
-      document.getElementById("userInfo").innerText = `Профиль: ${fio} ${company ? '(' + company + ')' : ''}`;
+      document.getElementById("userInfo").innerText = `Авторизован: ${fio} ${company ? '(' + company + ')' : ''}`;
     }
 
-    async function startCamera() {
-      document.getElementById("successOverlay").classList.add("hidden");
-      document.getElementById("errorOverlay").classList.add("hidden");
-      document.getElementById("reader").classList.remove("hidden");
-
-      isProcessing = false;
-      if (html5QrCode) return; 
-
-      html5QrCode = new Html5Qrcode("reader");
-
-      try {
-        const allCameras = await Html5Qrcode.getCameras();
-        
-        availableCameras = allCameras.filter(c => {
-          const label = c.label.toLowerCase();
-          const isFront = label.includes("front") || label.includes("user") || label.includes("передн") || label.includes("selfie");
-          return !isFront;
-        });
-
-        if (availableCameras.length === 0) availableCameras = allCameras;
-
-        let primaryCamera = availableCameras.find(c => {
-          const label = c.label.toLowerCase();
-          return !label.includes("0.6") && !label.includes("wide") && !label.includes("ultra") && !label.includes("широк");
-        });
-
-        if (!primaryCamera && availableCameras.length > 0) primaryCamera = availableCameras[0];
-
-        let cameraConstraint = primaryCamera && primaryCamera.id ? primaryCamera.id : { facingMode: "environment" };
-
-        if (availableCameras.length > 1) {
-          document.getElementById("switchCamBtn").classList.remove("hidden");
-        }
-
-        await html5QrCode.start(
-          cameraConstraint,
-          { fps: 15, qrbox: { width: 260, height: 260 } },
-          onScanSuccess,
-          onScanError
-        );
-      } catch (err) {
-        console.error("Ошибка камеры:", err);
-        try {
-          await html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 260, height: 260 } }, onScanSuccess, onScanError);
-        } catch(e) { html5QrCode = null; }
-      }
-    }
-
-    async function switchCamera() {
-      if (!availableCameras || availableCameras.length < 2) return;
-
-      currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-      const nextCamera = availableCameras[currentCameraIndex];
-
-      if (html5QrCode) {
-        try { await html5QrCode.stop(); } catch(e) {}
-        html5QrCode = null;
-      }
-
-      html5QrCode = new Html5Qrcode("reader");
-      await html5QrCode.start(nextCamera.id, { fps: 15, qrbox: { width: 260, height: 260 } }, onScanSuccess, onScanError);
-    }
-
-    // ТУТ ПРОИСХОДИТ ПРОВЕРКА QR-КОДА И СТОЛБЦА E
-    function onScanSuccess(qrData) {
-      if (isProcessing) return;
-      isProcessing = true;
-
-      const rawQr = String(qrData || '').trim().toLowerCase();
-
-      // 1. ПРОВЕРКА QR-КОДА: Настоящая ли это ссылка на вашу Google Форму?
-      const isFormLink = rawQr.includes("docs.google.com/forms") || 
-                         rawQr.includes("forms.gle") || 
-                         rawQr.includes("1faipqlsdyi6y-04_nym8e0ocxjam-o7xanhe9qjocjurxqznpewbamg");
-
-      if (!isFormLink) {
-        stopCameraAndShowError("⛔ Ошибка QR-кода!\nОтсканирован посторонний QR.\nЭто НЕ ссылка на форму питания!");
-        return;
-      }
-
-      // 2. ПРОВЕРКА СТОЛБЦА E
-      const savedId = localStorage.getItem("app_operator_id") || "";
-      const user = findUser(savedId);
-
-      const permissionStatus = user && user.permission ? user.permission.toLowerCase() : "";
-
-      if (permissionStatus !== "yes") {
-        stopCameraAndShowError(`⛔ Ошибка доступа!\nУ сотрудника ${user ? user.fio : ''}\nв столбце E стоит "${user ? user.permission : 'No'}".\nДанные НЕ отправлены!`);
-        return;
-      }
-
-      sendToGoogleForm(qrData);
-    }
-
-    function onScanError(error) {}
-
-    function sendToGoogleForm(qrData) {
-      const fio = localStorage.getItem("app_fio") || "";
-      const company = localStorage.getItem("app_company") || "";
-
+    function sendToGoogleFormAuto(user) {
       let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
       if (!postUrl.endsWith('/formResponse')) {
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
       }
 
       const formData = new FormData();
-      formData.append(ENTRY_NAME, fio);
-      formData.append(ENTRY_COMPANY, company);
+      formData.append(ENTRY_NAME, user.fio);
+      formData.append(ENTRY_COMPANY, user.company);
 
       fetch(postUrl, {
         method: "POST",
@@ -374,83 +264,29 @@
         body: formData
       })
       .then(() => {
-        stopCameraAndShowSuccess();
+        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`);
       })
       .catch((err) => {
-        stopCameraAndShowError("❌ Ошибка при отправке. Проверьте интернет.");
+        showError("❌ Ошибка при отправке. Проверьте интернет.");
       });
     }
 
-    function stopCameraAndShowError(errorText) {
-      document.getElementById("switchCamBtn").classList.add("hidden");
+    function showError(errorText) {
+      document.getElementById("reader").classList.add("hidden");
+      document.getElementById("successOverlay").classList.add("hidden");
+      
       const errorDiv = document.getElementById("errorResult");
       errorDiv.innerText = errorText;
-
-      const hideAndShowOverlay = () => {
-        document.getElementById("reader").classList.add("hidden");
-        document.getElementById("errorOverlay").classList.remove("hidden");
-        
-        // Автоматический перезапуск сканера через 4 секунды
-        setTimeout(() => {
-          document.getElementById("errorOverlay").classList.add("hidden");
-          startCamera();
-        }, 4000);
-      };
-
-      if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-          html5QrCode = null;
-          hideAndShowOverlay();
-        }).catch(() => {
-          html5QrCode = null;
-          hideAndShowOverlay();
-        });
-      } else {
-        hideAndShowOverlay();
-      }
+      document.getElementById("errorOverlay").classList.remove("hidden");
     }
 
-    function stopCameraAndShowSuccess() {
-      document.getElementById("switchCamBtn").classList.add("hidden");
-      const hideAndShowOverlay = () => {
-        document.getElementById("reader").classList.add("hidden");
-        document.getElementById("successOverlay").classList.remove("hidden");
-        startCountdown(300);
-      };
-
-      if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-          html5QrCode = null;
-          hideAndShowOverlay();
-        }).catch(() => {
-          html5QrCode = null;
-          hideAndShowOverlay();
-        });
-      } else {
-        hideAndShowOverlay();
-      }
-    }
-
-    function startCountdown(seconds) {
-      const scanResultDiv = document.getElementById("scanResult");
-      let timeLeft = seconds;
+    function showSuccess(successText) {
+      document.getElementById("reader").classList.add("hidden");
+      document.getElementById("errorOverlay").classList.add("hidden");
       
-      if (countdownTimer) clearInterval(countdownTimer);
-
-      countdownTimer = setInterval(() => {
-        const minutes = Math.floor(timeLeft / 60);
-        const secs = timeLeft % 60;
-        const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-        
-        scanResultDiv.innerHTML = `✅ Отсканировано и отправлено!<br><span style="font-size: 1.1rem; color: #1877f2; font-weight: bold;">⏱ Таймер: ${timeString}</span>`;
-        
-        timeLeft--;
-
-        if (timeLeft < 0) {
-          clearInterval(countdownTimer);
-          startCamera();
-        }
-      }, 1000);
+      const scanResultDiv = document.getElementById("scanResult");
+      scanResultDiv.innerText = successText;
+      document.getElementById("successOverlay").classList.remove("hidden");
     }
   </script>
 </body>
