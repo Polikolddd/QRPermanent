@@ -19,7 +19,7 @@
     
     .overlay {
       width: 100%;
-      min-height: 200px;
+      min-height: 220px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -68,7 +68,7 @@
     <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
 
-    <!-- Уведомление об успехе -->
+    <!-- Уведомление об успехе c ТАЙМЕРОМ -->
     <div id="successOverlay" class="overlay success-overlay hidden">
       <div class="big-icon">✅</div>
       <div id="scanResult" class="status success">Питание отмечено!</div>
@@ -80,7 +80,7 @@
       <div id="errorResult" class="status error">Питание запрещено!</div>
     </div>
 
-    <!-- Режим ожидания (без кнопки ручной отметки) -->
+    <!-- Режим ожидания -->
     <div id="idleOverlay" class="overlay idle-overlay hidden">
       <div class="big-icon">ℹ️</div>
       <div class="status idle">Вы авторизованы.<br>Для отметки отсканируйте QR-код на стойке.</div>
@@ -105,6 +105,7 @@
     let loadedCount = 0;
     let isDbLoaded = false;
     let currentUser = null;
+    let countdownTimer = null;
 
     document.addEventListener("DOMContentLoaded", () => {
       loadDatabaseFromGoogleSheet();
@@ -238,7 +239,6 @@
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
       
-      // При первой авторизации отправляем отметку
       executeCheckin(user);
       hideSettings();
       updateUserInfoDisplay(user.fio, user.company);
@@ -289,6 +289,7 @@
     }
 
     function hideAllOverlays() {
+      if (countdownTimer) clearInterval(countdownTimer);
       document.getElementById("successOverlay").classList.add("hidden");
       document.getElementById("errorOverlay").classList.add("hidden");
       document.getElementById("idleOverlay").classList.add("hidden");
@@ -303,9 +304,30 @@
 
     function showSuccess(successText) {
       hideAllOverlays();
-      const scanResultDiv = document.getElementById("scanResult");
-      scanResultDiv.innerText = successText;
       document.getElementById("successOverlay").classList.remove("hidden");
+      startCountdown(300, successText);
+    }
+
+    function startCountdown(seconds, baseText) {
+      const scanResultDiv = document.getElementById("scanResult");
+      let timeLeft = seconds;
+      
+      if (countdownTimer) clearInterval(countdownTimer);
+
+      countdownTimer = setInterval(() => {
+        const minutes = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        
+        scanResultDiv.innerHTML = `${baseText}<br><br><span style="font-size: 1.1rem; color: #1877f2; font-weight: bold;">⏱ Экран закроется через: ${timeString}</span>`;
+        
+        timeLeft--;
+
+        if (timeLeft < 0) {
+          clearInterval(countdownTimer);
+          showIdle();
+        }
+      }, 1000);
     }
 
     function showIdle() {
