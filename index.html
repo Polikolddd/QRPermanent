@@ -80,11 +80,10 @@
       <div id="errorResult" class="status error">Питание запрещено!</div>
     </div>
 
-    <!-- Режим ожидания (при простом заходе/обновлении) -->
+    <!-- Режим ожидания (без кнопки ручной отметки) -->
     <div id="idleOverlay" class="overlay idle-overlay hidden">
       <div class="big-icon">ℹ️</div>
-      <div class="status idle">Вы уже авторизованы.<br>Отсканируйте QR-код на стойке, чтобы отметиться.</div>
-      <button onclick="manualCheckin()" style="margin-top: 15px; width: auto; padding: 10px 20px;">Отметиться вручную</button>
+      <div class="status idle">Вы авторизованы.<br>Для отметки отсканируйте QR-код на стойке.</div>
     </div>
   </div>
 
@@ -193,23 +192,17 @@
       hideSettings();
       updateUserInfoDisplay(currentUser.fio, currentUser.company);
 
-      // Проверяем, пришли ли мы по QR-коду с авто-отметкой (?auto=1)
+      // Проверяем, пришли ли по QR-коду (?auto=1)
       const urlParams = new URLSearchParams(window.location.search);
       const isAutoMode = urlParams.get('auto') === '1';
 
       if (isAutoMode) {
-        // ОЧИЩАЕМ АДРЕСНУЮ СТРОКУ, чтобы повторный Refresh НЕ отправлял форму дубликатом!
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // Очищаем адресную строку, чтобы исключить дубли при обновлении
+        window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
         executeCheckin(currentUser);
       } else {
-        // Если человек просто обновил страницу или открыл сайт без QR
+        // Если открыли сайт без QR или обновили
         showIdle();
-      }
-    }
-
-    function manualCheckin() {
-      if (currentUser) {
-        executeCheckin(currentUser);
       }
     }
 
@@ -245,7 +238,7 @@
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
       
-      // После авторизации сразу отправляем отметку
+      // При первой авторизации отправляем отметку
       executeCheckin(user);
       hideSettings();
       updateUserInfoDisplay(user.fio, user.company);
