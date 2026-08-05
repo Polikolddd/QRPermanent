@@ -16,12 +16,10 @@
     input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
-    .btn-cam-switch { background: #42b72a; color: #fff; margin-top: 8px; font-size: 0.9rem; }
-    #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 12px; min-height: 250px; background: #000; }
     
     .overlay {
       width: 100%;
-      min-height: 250px;
+      min-height: 200px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -33,6 +31,7 @@
     }
     .success-overlay { background: #f8f9fa; border: 2px dashed #42b72a; }
     .error-overlay { background: #fff5f5; border: 2px dashed #fa3e3e; }
+    .idle-overlay { background: #f0f2f5; border: 2px dashed #ccd0d5; }
     
     .big-icon { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
     @keyframes popIn {
@@ -43,11 +42,11 @@
     .status { margin-top: 10px; font-size: 1rem; font-weight: 600; text-align: center; white-space: pre-line; }
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
+    .idle { color: #606770; }
     .hidden { display: none !important; }
     .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; }
     .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
   </style>
-  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -64,13 +63,10 @@
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
-  <!-- Блок сканера / Статуса -->
+  <!-- Блок статуса отметки -->
   <div class="card">
     <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
-    
-    <div id="reader"></div>
-    <button id="switchCamBtn" class="btn-cam-switch hidden" onclick="switchCamera()">🔄 Сменить объектив</button>
 
     <!-- Уведомление об успехе -->
     <div id="successOverlay" class="overlay success-overlay hidden">
@@ -82,6 +78,13 @@
     <div id="errorOverlay" class="overlay error-overlay hidden">
       <div class="big-icon">⛔</div>
       <div id="errorResult" class="status error">Питание запрещено!</div>
+    </div>
+
+    <!-- Режим ожидания (при простом заходе/обновлении) -->
+    <div id="idleOverlay" class="overlay idle-overlay hidden">
+      <div class="big-icon">ℹ️</div>
+      <div class="status idle">Вы уже авторизованы.<br>Отсканируйте QR-код на стойке, чтобы отметиться.</div>
+      <button onclick="manualCheckin()" style="margin-top: 15px; width: auto; padding: 10px 20px;">Отметиться вручную</button>
     </div>
   </div>
 
@@ -102,7 +105,7 @@
     let operatorsDatabase = {};
     let loadedCount = 0;
     let isDbLoaded = false;
-    let html5QrCode = null;
+    let currentUser = null;
 
     document.addEventListener("DOMContentLoaded", () => {
       loadDatabaseFromGoogleSheet();
@@ -135,7 +138,6 @@
             statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)`;
             statusDiv.style.color = "#42b72a";
             
-            // Запуск автоматической проверки при переходе по QR
             processAutoCheckin();
           }
         });
@@ -174,7 +176,6 @@
       return operatorsDatabase[cleanedInput] || operatorsDatabase[digitsOnly] || null;
     }
 
-    // ЛОГИКА АВТОМАТИЧЕСКОЙ ОТМЕТКИ
     function processAutoCheckin() {
       const savedId = localStorage.getItem("app_operator_id") || "";
       if (!savedId) {
@@ -182,23 +183,42 @@
         return;
       }
 
-      const user = findUser(savedId);
-      if (!user) {
+      currentUser = findUser(savedId);
+      if (!currentUser) {
         showSettings();
         alert(`❌ Ваш ID (${savedId}) не найден в базе. Введите ID повторно.`);
         return;
       }
 
       hideSettings();
-      updateUserInfoDisplay(user.fio, user.company);
+      updateUserInfoDisplay(currentUser.fio, currentUser.company);
 
-      // Проверяем разрешение (столбец E)
+      // Проверяем, пришли ли мы по QR-коду с авто-отметкой (?auto=1)
+      const urlParams = new URLSearchParams(window.location.search);
+      const isAutoMode = urlParams.get('auto') === '1';
+
+      if (isAutoMode) {
+        // ОЧИЩАЕМ АДРЕСНУЮ СТРОКУ, чтобы повторный Refresh НЕ отправлял форму дубликатом!
+        window.history.replaceState({}, document.title, window.location.pathname);
+        executeCheckin(currentUser);
+      } else {
+        // Если человек просто обновил страницу или открыл сайт без QR
+        showIdle();
+      }
+    }
+
+    function manualCheckin() {
+      if (currentUser) {
+        executeCheckin(currentUser);
+      }
+    }
+
+    function executeCheckin(user) {
       const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
 
       if (permissionStatus !== "yes") {
         showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус в столбце E: "${user.permission}".\nОтметка НЕ отправлена!`);
       } else {
-        // Если Разрешено — сразу автоматически отправляем данные!
         sendToGoogleFormAuto(user);
       }
     }
@@ -225,7 +245,10 @@
       localStorage.setItem("app_fio", user.fio);
       localStorage.setItem("app_company", user.company);
       
-      processAutoCheckin();
+      // После авторизации сразу отправляем отметку
+      executeCheckin(user);
+      hideSettings();
+      updateUserInfoDisplay(user.fio, user.company);
     }
 
     function hideSettings() {
@@ -236,6 +259,7 @@
     function showSettings() {
       document.getElementById("settingsCard").classList.remove("hidden");
       document.getElementById("toggleSettingsBtn").classList.add("hidden");
+      hideAllOverlays();
     }
 
     function toggleSettings() {
@@ -271,22 +295,29 @@
       });
     }
 
-    function showError(errorText) {
-      document.getElementById("reader").classList.add("hidden");
+    function hideAllOverlays() {
       document.getElementById("successOverlay").classList.add("hidden");
-      
+      document.getElementById("errorOverlay").classList.add("hidden");
+      document.getElementById("idleOverlay").classList.add("hidden");
+    }
+
+    function showError(errorText) {
+      hideAllOverlays();
       const errorDiv = document.getElementById("errorResult");
       errorDiv.innerText = errorText;
       document.getElementById("errorOverlay").classList.remove("hidden");
     }
 
     function showSuccess(successText) {
-      document.getElementById("reader").classList.add("hidden");
-      document.getElementById("errorOverlay").classList.add("hidden");
-      
+      hideAllOverlays();
       const scanResultDiv = document.getElementById("scanResult");
       scanResultDiv.innerText = successText;
       document.getElementById("successOverlay").classList.remove("hidden");
+    }
+
+    function showIdle() {
+      hideAllOverlays();
+      document.getElementById("idleOverlay").classList.remove("hidden");
     }
   </script>
 </body>
