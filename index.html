@@ -51,7 +51,7 @@
 </head>
 <body>
 
-  <!-- Блок авторизации по ID или ИИН -->
+  <!-- Блок авторизации -->
   <div id="settingsCard" class="card">
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
@@ -68,7 +68,7 @@
     <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
 
-    <!-- Уведомление об успехе c ТАЙМЕРОМ -->
+    <!-- Уведомление об успехе -->
     <div id="successOverlay" class="overlay success-overlay hidden">
       <div class="big-icon">✅</div>
       <div id="scanResult" class="status success">Питание отмечено!</div>
@@ -96,18 +96,17 @@
       caches.keys().then(names => names.forEach(name => caches.delete(name)));
     }
 
-    // 1. ID ТАБЛИЦЫ И GID ВАКЛАДКИ "ID"
-    const SHEET_URL_OR_ID = '1ZUmmkWQbQIgl_2SdayolJN7Ba2rm4rq8Jx0BSK2Nrrl'; 
-    const SHEET_GID       = '41161104'; 
+    // 1. ПРЯМАЯ ССЫЛКА НА CSV ФАЙЛ (СКОНВЕРТИРОВАННАЯ ИЗ ТВОЕЙ)
+    const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
 
     // 2. ССЫЛКА НА ГУГЛ ФОРМУ
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
 
-    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ (ENTRY ID)
-    const ENTRY_NAME      = 'entry.1408210808'; // ФИО
-    const ENTRY_COMPANY   = 'entry.1935797578'; // Организация
-    const ENTRY_IIN       = 'entry.725430315';  // ИИН
-    const ENTRY_COST_CODE = 'entry.1791590417'; // Кост-код
+    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ
+    const ENTRY_NAME      = 'entry.1408210808'; 
+    const ENTRY_COMPANY   = 'entry.1935797578'; 
+    const ENTRY_IIN       = 'entry.725430315';  
+    const ENTRY_COST_CODE = 'entry.1791590417'; 
 
     let operatorsDatabase = {};
     let loadedCount = 0;
@@ -131,13 +130,19 @@
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
       const timestamp = new Date().getTime();
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_URL_OR_ID}/export?format=csv&gid=${SHEET_GID}&nocache=${timestamp}`;
+      const csvUrl = `${PUBLISHED_CSV_URL}&t=${timestamp}`;
 
       try {
         const response = await fetch(csvUrl);
-        if (!response.ok) throw new Error("Ошибка загрузки");
+        if (!response.ok) throw new Error("Ошибка ответа от Google");
+        
         const csvText = await response.text();
         
+        // Защита от HTML страниц, если Google всё-таки выдаст страницу ошибки
+        if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) {
+             throw new Error("Получен HTML вместо CSV");
+        }
+
         Papa.parse(csvText, {
           skipEmptyLines: true,
           complete: function(results) {
@@ -150,8 +155,8 @@
           }
         });
       } catch (err) {
-        console.error("Ошибка базы:", err);
-        statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
+        console.error("Ошибка загрузки:", err);
+        statusDiv.innerText = "⚠️ Ошибка подключения к базе. Проверьте интернет.";
         statusDiv.style.color = "#fa3e3e";
       }
     }
@@ -161,24 +166,18 @@
       loadedCount = 0;
 
       rows.forEach((cols, index) => {
-        if (index === 0 || cols.length < 2) return;
+        if (index === 0 || cols.length < 2) return; // Пропуск заголовков
 
-        const rawId      = cleanString(cols[0]);               // Столбец A: ID
+        const rawId      = cleanString(cols[0]);               // A: ID
         const digitId    = getCleanDigits(rawId);
-        const fio        = cleanString(cols[1]);               // Столбец B: ФИО
-        const company    = cleanString(cols[2]);               // Столбец C: Организация
-        const iin        = cleanString(cols[3]);               // Столбец D: ИИН
-        const permission = cleanString(cols[4] || "No");       // Столбец E: Статус Yes/No
-        const costCode   = cleanString(cols[5] || "");         // Столбец F: Кост-код
+        const fio        = cleanString(cols[1]);               // B: ФИО
+        const company    = cleanString(cols[2]);               // C: Организация
+        const iin        = cleanString(cols[3]);               // D: ИИН
+        const permission = cleanString(cols[4] || "No");       // E: Статус Yes/No
+        const costCode   = cleanString(cols[5] || "");         // F: Кост-код
 
         if (fio && (rawId || iin)) {
-          const userObj = { 
-            fio: fio, 
-            company: company, 
-            permission: permission, 
-            iin: iin, 
-            costCode: costCode 
-          };
+          const userObj = { fio, company, permission, iin, costCode };
 
           if (rawId) operatorsDatabase[rawId] = userObj;
           if (digitId) operatorsDatabase[digitId] = userObj;
@@ -291,7 +290,6 @@
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
       }
 
-      // Используем URLSearchParams вместо FormData для 100% совместимости с Google Forms
       const params = new URLSearchParams();
       params.append(ENTRY_NAME, user.fio);
       params.append(ENTRY_COMPANY, user.company);
@@ -331,7 +329,7 @@
     function showSuccess(successText) {
       hideAllOverlays();
       document.getElementById("successOverlay").classList.remove("hidden");
-      startCountdown(300, successText);
+      startCountdown(300, successText); // Таймер на 300 секунд (5 минут)
     }
 
     function startCountdown(seconds, baseText) {
