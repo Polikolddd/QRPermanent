@@ -13,8 +13,14 @@
     .card { background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
     h2 { margin-top: 0; font-size: 1.1rem; color: #1877f2; }
     label { display: block; margin-top: 10px; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: #606770; }
-    input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; }
-    button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
+    
+    input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; transition: all 0.2s; }
+    button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+    
+    /* Стили для заблокированных элементов (пока грузится база) */
+    input:disabled { background-color: #f2f3f5; color: #8d949e; border-color: #dcdee1; cursor: not-allowed; }
+    button:disabled { background-color: #9cbdf8; cursor: not-allowed; opacity: 0.7; }
+
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: normal; font-size: 0.85rem; padding: 8px; }
     
     .overlay {
@@ -55,9 +61,11 @@
   <div id="settingsCard" class="card">
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
-    <input type="text" id="operatorId" placeholder="Например: 242242 или ИИН">
 
-    <button onclick="saveSettings()">Войти в систему</button>
+    <!-- Элементы заблокированы (disabled) по умолчанию -->
+    <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
+    <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
+
     <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
   </div>
 
@@ -96,7 +104,7 @@
       caches.keys().then(names => names.forEach(name => caches.delete(name)));
     }
 
-    // 1. ПРЯМАЯ ССЫЛКА НА CSV ФАЙЛ (СКОНВЕРТИРОВАННАЯ ИЗ ТВОЕЙ)
+    // 1. ПРЯМАЯ ССЫЛКА НА CSV ФАЙЛ
     const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
 
     // 2. ССЫЛКА НА ГУГЛ ФОРМУ
@@ -127,6 +135,16 @@
       return cleanString(str).replace(/\D/g, '');
     }
 
+    // Включение элементов UI после успешной загрузки базы
+    function unlockUI() {
+      const input = document.getElementById("operatorId");
+      const btn = document.getElementById("submitBtn");
+
+      input.disabled = false;
+      btn.disabled = false;
+      input.placeholder = "Например: 242242 или ИИН";
+    }
+
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
       const timestamp = new Date().getTime();
@@ -138,7 +156,6 @@
         
         const csvText = await response.text();
         
-        // Защита от HTML страниц, если Google всё-таки выдаст страницу ошибки
         if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) {
              throw new Error("Получен HTML вместо CSV");
         }
@@ -151,6 +168,9 @@
             statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)`;
             statusDiv.style.color = "#42b72a";
             
+            // РАЗБЛОКИРУЕМ ФОРМУ ДЛЯ ВВОДА
+            unlockUI();
+
             processAutoCheckin();
           }
         });
@@ -166,7 +186,7 @@
       loadedCount = 0;
 
       rows.forEach((cols, index) => {
-        if (index === 0 || cols.length < 2) return; // Пропуск заголовков
+        if (index === 0 || cols.length < 2) return;
 
         const rawId      = cleanString(cols[0]);               // A: ID
         const digitId    = getCleanDigits(rawId);
@@ -237,10 +257,7 @@
     }
 
     function saveSettings() {
-      if (!isDbLoaded) {
-        alert("База пользователей ещё загружается...");
-        return;
-      }
+      if (!isDbLoaded) return;
 
       const inputId = document.getElementById("operatorId").value;
       if (!inputId.trim()) {
@@ -329,7 +346,7 @@
     function showSuccess(successText) {
       hideAllOverlays();
       document.getElementById("successOverlay").classList.remove("hidden");
-      startCountdown(300, successText); // Таймер на 300 секунд (5 минут)
+      startCountdown(300, successText);
     }
 
     function startCountdown(seconds, baseText) {
