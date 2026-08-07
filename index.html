@@ -44,7 +44,7 @@
     .error { color: #fa3e3e; }
     .idle { color: #606770; }
     .hidden { display: none !important; }
-    .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; }
+    .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; line-height: 1.4; }
     .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -96,13 +96,14 @@
       caches.keys().then(names => names.forEach(name => caches.delete(name)));
     }
 
-    // 1. НОВЫЙ ID ТАБЛИЦЫ СЪЕМКИ С ИЗОБРАЖЕНИЯ
+    // 1. ID ТАБЛИЦЫ И GID ВАКЛАДКИ "ID"
     const SHEET_URL_OR_ID = '1ZUmmkWQbQIgl_2SdayolJN7Ba2rm4rq8Jx0BSK2Nrrl'; 
-    
+    const SHEET_GID       = '41161104'; 
+
     // 2. ССЫЛКА НА ГУГЛ ФОРМУ
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
 
-    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ
+    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ (ENTRY ID)
     const ENTRY_NAME      = 'entry.1408210808'; // ФИО
     const ENTRY_COMPANY   = 'entry.1935797578'; // Организация
     const ENTRY_IIN       = 'entry.725430315';  // ИИН
@@ -130,7 +131,7 @@
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
       const timestamp = new Date().getTime();
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_URL_OR_ID}/export?format=csv&id=${SHEET_URL_OR_ID}&nocache=${timestamp}`;
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_URL_OR_ID}/export?format=csv&gid=${SHEET_GID}&nocache=${timestamp}`;
 
       try {
         const response = await fetch(csvUrl);
@@ -213,7 +214,7 @@
       }
 
       hideSettings();
-      updateUserInfoDisplay(currentUser.fio, currentUser.company);
+      updateUserInfoDisplay(currentUser);
 
       const urlParams = new URLSearchParams(window.location.search);
       const isAutoMode = urlParams.get('auto') === '1';
@@ -230,7 +231,7 @@
       const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
 
       if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа (Столбец E): "${user.permission}".\nОтметка НЕ отправлена!`);
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка НЕ отправлена!`);
       } else {
         sendToGoogleFormAuto(user);
       }
@@ -255,12 +256,10 @@
       }
 
       localStorage.setItem("app_operator_id", inputId.trim());
-      localStorage.setItem("app_fio", user.fio);
-      localStorage.setItem("app_company", user.company);
       
       executeCheckin(user);
       hideSettings();
-      updateUserInfoDisplay(user.fio, user.company);
+      updateUserInfoDisplay(user);
     }
 
     function hideSettings() {
@@ -280,8 +279,10 @@
       else hideSettings();
     }
 
-    function updateUserInfoDisplay(fio, company) {
-      document.getElementById("userInfo").innerText = `Авторизован: ${fio} ${company ? '(' + company + ')' : ''}`;
+    function updateUserInfoDisplay(user) {
+      document.getElementById("userInfo").innerHTML = 
+        `👤 <strong>${user.fio}</strong><br>` +
+        `<span style="font-size:0.8rem; color:#606770;">${user.company} | ИИН: ${user.iin || '—'} | Кост: ${user.costCode || '—'}</span>`;
     }
 
     function sendToGoogleFormAuto(user) {
@@ -290,16 +291,20 @@
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
       }
 
-      const formData = new FormData();
-      formData.append(ENTRY_NAME, user.fio);
-      formData.append(ENTRY_COMPANY, user.company);
-      formData.append(ENTRY_IIN, user.iin);            // Передаем ИИН
-      formData.append(ENTRY_COST_CODE, user.costCode);  // Передаем Кост-код
+      // Используем URLSearchParams вместо FormData для 100% совместимости с Google Forms
+      const params = new URLSearchParams();
+      params.append(ENTRY_NAME, user.fio);
+      params.append(ENTRY_COMPANY, user.company);
+      params.append(ENTRY_IIN, user.iin);
+      params.append(ENTRY_COST_CODE, user.costCode);
 
       fetch(postUrl, {
         method: "POST",
         mode: "no-cors",
-        body: formData
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
       })
       .then(() => {
         showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`);
