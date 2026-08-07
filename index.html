@@ -51,11 +51,11 @@
 </head>
 <body>
 
-  <!-- Блок авторизации по ID -->
+  <!-- Блок авторизации по ID или ИИН -->
   <div id="settingsCard" class="card">
-    <h2>👤 Авторизация по ID</h2>
-    <label for="operatorId">Введите ваш ID:</label>
-    <input type="text" id="operatorId" placeholder="Например: 242270">
+    <h2>👤 Авторизация по ID / ИИН</h2>
+    <label for="operatorId">Введите ваш ID или ИИН:</label>
+    <input type="text" id="operatorId" placeholder="Например: 242242 или ИИН">
 
     <button onclick="saveSettings()">Войти в систему</button>
     <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
@@ -88,7 +88,7 @@
   </div>
 
   <script>
-    // Очистка КЭШа
+    // Очистка КЭШа браузера
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(r => r.forEach(reg => reg.unregister()));
     }
@@ -96,10 +96,17 @@
       caches.keys().then(names => names.forEach(name => caches.delete(name)));
     }
 
-    const SHEET_URL_OR_ID = '1vj8_WZXK8B73QwI1Qmn-J5tmAdGVT7izX555WoBFkwU'; 
+    // 1. НОВЫЙ ID ТАБЛИЦЫ СЪЕМКИ С ИЗОБРАЖЕНИЯ
+    const SHEET_URL_OR_ID = '1ZUmmkWQbQIgl_2SdayolJN7Ba2rm4rq8Jx0BSK2Nrrl'; 
+    
+    // 2. ССЫЛКА НА ГУГЛ ФОРМУ
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-    const ENTRY_NAME = 'entry.1408210808';    
-    const ENTRY_COMPANY = 'entry.1935797578'; 
+
+    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ
+    const ENTRY_NAME      = 'entry.1408210808'; // ФИО
+    const ENTRY_COMPANY   = 'entry.1935797578'; // Организация
+    const ENTRY_IIN       = 'entry.725430315';  // ИИН
+    const ENTRY_COST_CODE = 'entry.1791590417'; // Кост-код
 
     let operatorsDatabase = {};
     let loadedCount = 0;
@@ -155,16 +162,31 @@
       rows.forEach((cols, index) => {
         if (index === 0 || cols.length < 2) return;
 
-        const rawId = cleanString(cols[0]);
-        const digitId = getCleanDigits(rawId);
-        const fio = cleanString(cols[1]);
-        const company = cleanString(cols[2]);
-        const permission = cleanString(cols[4] || "No");
+        const rawId      = cleanString(cols[0]);               // Столбец A: ID
+        const digitId    = getCleanDigits(rawId);
+        const fio        = cleanString(cols[1]);               // Столбец B: ФИО
+        const company    = cleanString(cols[2]);               // Столбец C: Организация
+        const iin        = cleanString(cols[3]);               // Столбец D: ИИН
+        const permission = cleanString(cols[4] || "No");       // Столбец E: Статус Yes/No
+        const costCode   = cleanString(cols[5] || "");         // Столбец F: Кост-код
 
-        if (rawId && fio) {
-          const userObj = { fio: fio, company: company, permission: permission };
-          operatorsDatabase[rawId] = userObj;
+        if (fio && (rawId || iin)) {
+          const userObj = { 
+            fio: fio, 
+            company: company, 
+            permission: permission, 
+            iin: iin, 
+            costCode: costCode 
+          };
+
+          if (rawId) operatorsDatabase[rawId] = userObj;
           if (digitId) operatorsDatabase[digitId] = userObj;
+          if (iin) {
+            operatorsDatabase[iin] = userObj;
+            const digitIin = getCleanDigits(iin);
+            if (digitIin) operatorsDatabase[digitIin] = userObj;
+          }
+
           loadedCount++;
         }
       });
@@ -186,23 +208,20 @@
       currentUser = findUser(savedId);
       if (!currentUser) {
         showSettings();
-        alert(`❌ Ваш ID (${savedId}) не найден в базе. Введите ID повторно.`);
+        alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе. Введите данные повторно.`);
         return;
       }
 
       hideSettings();
       updateUserInfoDisplay(currentUser.fio, currentUser.company);
 
-      // Проверяем, пришли ли по QR-коду (?auto=1)
       const urlParams = new URLSearchParams(window.location.search);
       const isAutoMode = urlParams.get('auto') === '1';
 
       if (isAutoMode) {
-        // Очищаем адресную строку, чтобы исключить дубли при обновлении
         window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
         executeCheckin(currentUser);
       } else {
-        // Если открыли сайт без QR или обновили
         showIdle();
       }
     }
@@ -211,7 +230,7 @@
       const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
 
       if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус в столбце E: "${user.permission}".\nОтметка НЕ отправлена!`);
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа (Столбец E): "${user.permission}".\nОтметка НЕ отправлена!`);
       } else {
         sendToGoogleFormAuto(user);
       }
@@ -225,13 +244,13 @@
 
       const inputId = document.getElementById("operatorId").value;
       if (!inputId.trim()) {
-        alert("Пожалуйста, введите ваш ID!");
+        alert("Пожалуйста, введите ваш ID или ИИН!");
         return;
       }
 
       const user = findUser(inputId);
       if (!user) {
-        alert(`❌ Ошибка: Пользователь с ID "${inputId.trim()}" не найден в Google Таблице!`);
+        alert(`❌ Ошибка: Пользователь с ID/ИИН "${inputId.trim()}" не найден в Google Таблице!`);
         return;
       }
 
@@ -274,6 +293,8 @@
       const formData = new FormData();
       formData.append(ENTRY_NAME, user.fio);
       formData.append(ENTRY_COMPANY, user.company);
+      formData.append(ENTRY_IIN, user.iin);            // Передаем ИИН
+      formData.append(ENTRY_COST_CODE, user.costCode);  // Передаем Кост-код
 
       fetch(postUrl, {
         method: "POST",
