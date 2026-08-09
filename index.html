@@ -62,7 +62,7 @@
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
 
-    <!-- Элементы заблокированы (disabled) по умолчанию -->
+    <!-- Элементы заблокированы по умолчанию -->
     <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
     <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
 
@@ -96,21 +96,34 @@
   </div>
 
   <script>
-    // Очистка КЭШа браузера
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(r => r.forEach(reg => reg.unregister()));
-    }
-    if ('caches' in window) {
-      caches.keys().then(names => names.forEach(name => caches.delete(name)));
+    // 1. УНИВЕРСАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ IOS SAFARI (localStorage + Cookie Fallback)
+    function setSavedData(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) { console.warn("localStorage недоступен"); }
+      
+      const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
+      document.cookie = `${key}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
     }
 
-    // 1. ПРЯМАЯ ССЫЛКА НА CSV ФАЙЛ
+    function getSavedData(key) {
+      let val = null;
+      try {
+        val = localStorage.getItem(key);
+      } catch (e) {}
+
+      if (val) return val;
+
+      const matches = document.cookie.match(new RegExp(
+        "(?:^|; )" + key.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+      ));
+      return matches ? decodeURIComponent(matches[1]) : "";
+    }
+
+    // 2. ССЫЛКИ И НАСТРОЙКИ
     const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
+    const FORM_URL          = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
 
-    // 2. ССЫЛКА НА ГУГЛ ФОРМУ
-    const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-
-    // 3. ПОЛЯ ДЛЯ ОТПРАВКИ В ГУГЛ ФОРМУ
     const ENTRY_NAME      = 'entry.1408210808'; 
     const ENTRY_COMPANY   = 'entry.1935797578'; 
     const ENTRY_IIN       = 'entry.725430315';  
@@ -123,7 +136,7 @@
     let countdownTimer = null;
 
     document.addEventListener("DOMContentLoaded", () => {
-      loadDatabaseFromGoogleSheet();
+      initDatabase();
     });
 
     function cleanString(str) {
@@ -135,7 +148,6 @@
       return cleanString(str).replace(/\D/g, '');
     }
 
-    // Включение элементов UI после успешной загрузки базы
     function unlockUI() {
       const input = document.getElementById("operatorId");
       const btn = document.getElementById("submitBtn");
@@ -143,6 +155,39 @@
       input.disabled = false;
       btn.disabled = false;
       input.placeholder = "Например: 242242 или ИИН";
+    }
+
+    // 3. ИНИЦИАЛИЗАЦИЯ БАЗЫ (КЭШ + ФОНОВОЕ ОБНОВЛЕНИЕ)
+    function initDatabase() {
+      const cachedCsv = getSavedData("cached_db_csv");
+
+      if (cachedCsv) {
+        // Если кэш есть — загружаем его МГНОВЕННО (0.01 сек)
+        parseCsvAndInit(cachedCsv, true);
+        // А свежую базу скачиваем фоном
+        fetchLatestDatabaseInBackground();
+      } else {
+        // Если кэша нет — качаем из сети напрямую
+        loadDatabaseFromGoogleSheet();
+      }
+    }
+
+    function parseCsvAndInit(csvText, isFromCache = false) {
+      const statusDiv = document.getElementById("dbStatus");
+      
+      Papa.parse(csvText, {
+        skipEmptyLines: true,
+        complete: function(results) {
+          parseParsedRows(results.data);
+          isDbLoaded = true;
+          
+          statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)${isFromCache ? ' ⚡' : ''}`;
+          statusDiv.style.color = "#42b72a";
+          
+          unlockUI();
+          processAutoCheckin();
+        }
+      });
     }
 
     async function loadDatabaseFromGoogleSheet() {
@@ -155,29 +200,44 @@
         if (!response.ok) throw new Error("Ошибка ответа от Google");
         
         const csvText = await response.text();
-        
         if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) {
              throw new Error("Получен HTML вместо CSV");
         }
 
-        Papa.parse(csvText, {
-          skipEmptyLines: true,
-          complete: function(results) {
-            parseParsedRows(results.data);
-            isDbLoaded = true;
-            statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)`;
-            statusDiv.style.color = "#42b72a";
-            
-            // РАЗБЛОКИРУЕМ ФОРМУ ДЛЯ ВВОДА
-            unlockUI();
+        // Сохраняем свежую базу в кэш
+        setSavedData("cached_db_csv", csvText);
+        parseCsvAndInit(csvText, false);
 
-            processAutoCheckin();
-          }
-        });
       } catch (err) {
         console.error("Ошибка загрузки:", err);
         statusDiv.innerText = "⚠️ Ошибка подключения к базе. Проверьте интернет.";
         statusDiv.style.color = "#fa3e3e";
+      }
+    }
+
+    // Незаметная загрузка свежих данных в память на фоне
+    async function fetchLatestDatabaseInBackground() {
+      const timestamp = new Date().getTime();
+      const csvUrl = `${PUBLISHED_CSV_URL}&t=${timestamp}`;
+
+      try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) return;
+
+        const csvText = await response.text();
+        if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) return;
+
+        // Тихо обновляем кэш в памяти
+        setSavedData("cached_db_csv", csvText);
+        Papa.parse(csvText, {
+          skipEmptyLines: true,
+          complete: function(results) {
+            parseParsedRows(results.data);
+            console.log("🟢 База обновлена в фоновом режиме");
+          }
+        });
+      } catch (err) {
+        console.warn("Фоновое обновление базы не удалось (работаем на кэше):", err);
       }
     }
 
@@ -219,7 +279,7 @@
     }
 
     function processAutoCheckin() {
-      const savedId = localStorage.getItem("app_operator_id") || "";
+      const savedId = getSavedData("app_operator_id");
       if (!savedId) {
         showSettings();
         return;
@@ -271,7 +331,7 @@
         return;
       }
 
-      localStorage.setItem("app_operator_id", inputId.trim());
+      setSavedData("app_operator_id", inputId.trim());
       
       executeCheckin(user);
       hideSettings();
@@ -323,6 +383,8 @@
       })
       .then(() => {
         showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`);
+        // Повторный запуск обновления на фоне во время отображения экрана отметки
+        fetchLatestDatabaseInBackground();
       })
       .catch((err) => {
         showError("❌ Ошибка при отправке. Проверьте интернет.");
