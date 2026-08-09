@@ -162,9 +162,9 @@
       const cachedCsv = getSavedData("cached_db_csv");
 
       if (cachedCsv) {
-        // Если кэш есть — загружаем его МГНОВЕННО (0.01 сек)
+        // Загружаем кэш МГНОВЕННО
         parseCsvAndInit(cachedCsv, true);
-        // А свежую базу скачиваем фоном
+        // Свежую базу скачиваем фоном
         fetchLatestDatabaseInBackground();
       } else {
         // Если кэша нет — качаем из сети напрямую
@@ -233,7 +233,7 @@
           skipEmptyLines: true,
           complete: function(results) {
             parseParsedRows(results.data);
-            console.log("🟢 База обновлена в фоновом режиме");
+            console.log("🟢 База успешно обновлена на фоне");
           }
         });
       } catch (err) {
@@ -289,6 +289,7 @@
       if (!currentUser) {
         showSettings();
         alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе. Введите данные повторно.`);
+        fetchLatestDatabaseInBackground(); // Обновляем базу на фоне, если юзер не найден
         return;
       }
 
@@ -311,6 +312,8 @@
 
       if (permissionStatus !== "yes") {
         showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка НЕ отправлена!`);
+        // 🔄 ОБНОВЛЯЕМ БАЗУ НА ФОНЕ ПРИ ОТКАЗЕ ДОСТУПА
+        fetchLatestDatabaseInBackground();
       } else {
         sendToGoogleFormAuto(user);
       }
@@ -328,6 +331,7 @@
       const user = findUser(inputId);
       if (!user) {
         alert(`❌ Ошибка: Пользователь с ID/ИИН "${inputId.trim()}" не найден в Google Таблице!`);
+        fetchLatestDatabaseInBackground();
         return;
       }
 
@@ -383,11 +387,12 @@
       })
       .then(() => {
         showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`);
-        // Повторный запуск обновления на фоне во время отображения экрана отметки
+        // 🔄 ОБНОВЛЯЕМ БАЗУ НА ФОНЕ ПРИ УСПЕШНОЙ ОТМЕТКЕ
         fetchLatestDatabaseInBackground();
       })
       .catch((err) => {
         showError("❌ Ошибка при отправке. Проверьте интернет.");
+        fetchLatestDatabaseInBackground();
       });
     }
 
