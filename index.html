@@ -58,7 +58,7 @@
     .swipe-container {
       width: 100%;
       max-width: 300px;
-      margin: 16px auto 0 auto;
+      margin: 18px auto 0 auto;
       user-select: none;
       -webkit-user-select: none;
       touch-action: pan-y;
@@ -82,7 +82,6 @@
       width: 0%;
       background: linear-gradient(90deg, #1877f2, #42b72a);
       border-radius: 27px;
-      transition: width 0.1s ease-out;
     }
     .swipe-text {
       position: relative;
@@ -115,7 +114,6 @@
       cursor: grab;
       z-index: 2;
       color: #1877f2;
-      transition: transform 0.1s ease-out;
     }
     .swipe-thumb:active {
       cursor: grabbing;
@@ -130,7 +128,6 @@
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
 
-    <!-- Элементы заблокированы по умолчанию -->
     <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
     <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
 
@@ -144,11 +141,11 @@
     <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
 
-    <!-- Уведомление о необходимости СВАЙПА (при сканировании QR) -->
+    <!-- Уведомление о необходимости СВАЙПА -->
     <div id="swipeOverlay" class="overlay swipe-overlay hidden">
       <div class="big-icon">📲</div>
-      <div style="font-weight: 700; color: #1877f2; font-size: 1rem;">QR-код успешно подтвержден</div>
-      <div style="font-size: 0.85rem; color: #606770; margin-top: 4px;">Свайпните для подтверждения питания</div>
+      <div style="font-weight: 700; color: #1877f2; font-size: 1rem;">QR-код отсканирован</div>
+      <div style="font-size: 0.85rem; color: #606770; margin-top: 4px;">Свайпните вправо для подтверждения питания</div>
       
       <div class="swipe-container">
         <div class="swipe-track" id="swipeTrack">
@@ -219,6 +216,7 @@
     let isDbLoaded = false;
     let currentUser = null;
     let countdownTimer = null;
+    let currentX = 0; // Переменная смещения свайпера
 
     document.addEventListener("DOMContentLoaded", () => {
       initDatabase();
@@ -360,6 +358,9 @@
 
     function processAutoCheckin() {
       const savedId = getSavedData("app_operator_id");
+      const urlParams = new URLSearchParams(window.location.search);
+      const isAutoMode = urlParams.get('auto') === '1';
+
       if (!savedId) {
         showSettings();
         return;
@@ -388,12 +389,9 @@
       }
 
       // --- ПРОВЕРКА СКАНА QR-КОДА ---
-      const urlParams = new URLSearchParams(window.location.search);
-      const isAutoMode = urlParams.get('auto') === '1';
-
       if (isAutoMode) {
         window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
-        // При сканировании QR-кода просим СВАЙПНУТЬ
+        // При сканировании QR-кода ПОКАЗЫВАЕМ СВАЙПЕР (отправка строго после свайпа)
         showSwipeOverlay();
       } else {
         showIdle();
@@ -428,9 +426,18 @@
       }
 
       setSavedData("app_operator_id", inputId.trim());
-      executeCheckin(user);
+      currentUser = user;
       hideSettings();
       updateUserInfoDisplay(user);
+
+      // Если авторизация прошла во время скана QR, запрашиваем свайп
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('auto') === '1') {
+        window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
+        showSwipeOverlay();
+      } else {
+        showIdle();
+      }
     }
 
     function hideSettings() {
@@ -546,7 +553,7 @@
       document.getElementById("idleOverlay").classList.remove("hidden");
     }
 
-    // --- ЛОГИКА И АНИМАЦИЯ СВАЙПЕРА ---
+    // --- ЛОГИКА СВАЙПЕРА ---
     function initSwiperLogic() {
       const thumb = document.getElementById("swipeThumb");
       const track = document.getElementById("swipeTrack");
@@ -557,18 +564,22 @@
       let isDragging = false;
       let startX = 0;
       let maxDrag = 0;
-      let currentX = 0;
 
       function getClientX(e) {
-        return e.touches ? e.touches[0].clientX : e.clientX;
+        if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
+        if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientX;
+        return e.clientX;
       }
 
       function onStart(e) {
         isDragging = true;
         startX = getClientX(e);
+        currentX = 0; // Сбрасываем расстояние при каждом новом касании
         const trackRect = track.getBoundingClientRect();
         const thumbRect = thumb.getBoundingClientRect();
         maxDrag = trackRect.width - thumbRect.width - 6;
+        if (maxDrag <= 0) maxDrag = 200;
+
         thumb.style.transition = "none";
         fill.style.transition = "none";
       }
@@ -589,18 +600,25 @@
         if (!isDragging) return;
         isDragging = false;
 
-        if (currentX >= maxDrag * 0.82) {
+        // Отправляем данные только если протянули более 75% длины
+        if (maxDrag > 0 && currentX >= maxDrag * 0.75) {
           thumb.style.transform = `translateX(${maxDrag}px)`;
           fill.style.width = "100%";
+          currentX = 0;
           setTimeout(() => {
             resetSwiper();
-            if (currentUser) executeCheckin(currentUser);
-          }, 150);
+            hideAllOverlays();
+            if (currentUser) {
+              executeCheckin(currentUser);
+            }
+          }, 180);
         } else {
-          thumb.style.transition = "transform 0.3s ease";
-          fill.style.transition = "width 0.3s ease";
+          // Возвращаем ползунок в начало, если свайп не доведи до конца
+          thumb.style.transition = "transform 0.25s ease-out";
+          fill.style.transition = "width 0.25s ease-out";
           thumb.style.transform = "translateX(0px)";
           fill.style.width = "0%";
+          currentX = 0;
         }
       }
 
@@ -611,9 +629,11 @@
       thumb.addEventListener("touchstart", onStart, { passive: true });
       window.addEventListener("touchmove", onMove, { passive: true });
       window.addEventListener("touchend", onEnd);
+      window.addEventListener("touchcancel", onEnd);
     }
 
     function resetSwiper() {
+      currentX = 0;
       const thumb = document.getElementById("swipeThumb");
       const fill = document.getElementById("swipeFill");
       if (thumb && fill) {
