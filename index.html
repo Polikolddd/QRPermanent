@@ -2,14 +2,14 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>QR Meal Check-in</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, sans-serif; background: #f0f2f5; margin: 0; padding: 16px; color: #1c1e21; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 16px; color: #1c1e21; }
     .card { background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
     h2 { margin-top: 0; font-size: 1.1rem; color: #1877f2; }
     label { display: block; margin-top: 10px; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: #606770; }
@@ -17,7 +17,6 @@
     input { width: 100%; padding: 12px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 1.1rem; text-align: center; font-weight: bold; transition: all 0.2s; }
     button { width: 100%; padding: 12px; margin-top: 14px; background: #1877f2; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
     
-    /* Стили для заблокированных элементов (пока грузится база) */
     input:disabled { background-color: #f2f3f5; color: #8d949e; border-color: #dcdee1; cursor: not-allowed; }
     button:disabled { background-color: #9cbdf8; cursor: not-allowed; opacity: 0.7; }
 
@@ -25,7 +24,7 @@
     
     .overlay {
       width: 100%;
-      min-height: 220px;
+      min-height: 200px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -37,7 +36,6 @@
     }
     .success-overlay { background: #f8f9fa; border: 2px dashed #42b72a; }
     .error-overlay { background: #fff5f5; border: 2px dashed #fa3e3e; }
-    .idle-overlay { background: #f0f2f5; border: 2px dashed #ccd0d5; }
     
     .big-icon { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
     @keyframes popIn {
@@ -48,10 +46,82 @@
     .status { margin-top: 10px; font-size: 1rem; font-weight: 600; text-align: center; white-space: pre-line; }
     .success { color: #42b72a; }
     .error { color: #fa3e3e; }
-    .idle { color: #606770; }
     .hidden { display: none !important; }
-    .user-info { font-size: 0.95rem; color: #1877f2; margin-bottom: 8px; text-align: center; font-weight: 600; line-height: 1.4; }
+    .user-info { font-size: 1rem; color: #1877f2; margin-bottom: 12px; text-align: center; font-weight: 600; line-height: 1.4; }
     .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
+
+    /* --- Стили для элемента Свайпа --- */
+    .swipe-box {
+      margin-top: 16px;
+      background: #f8f9fa;
+      border: 1px solid #e4e6eb;
+      padding: 16px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .swipe-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #606770;
+      margin-bottom: 12px;
+    }
+    .swipe-container {
+      position: relative;
+      width: 100%;
+      height: 56px;
+      background: #e4e6eb;
+      border-radius: 28px;
+      overflow: hidden;
+      user-select: none;
+      touch-action: none;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+    }
+    .swipe-track-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0px;
+      background: #42b72a;
+      border-radius: 28px;
+      transition: width 0.05s ease-out;
+    }
+    .swipe-text {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #606770;
+      pointer-events: none;
+      z-index: 1;
+      letter-spacing: 0.3px;
+    }
+    .swipe-handle {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 50px;
+      height: 50px;
+      background: #1877f2;
+      color: #ffffff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      cursor: grab;
+      z-index: 2;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      transition: background 0.2s;
+    }
+    .swipe-handle:active {
+      cursor: grabbing;
+      background: #1464cc;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
@@ -62,7 +132,6 @@
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
 
-    <!-- Элементы заблокированы по умолчанию -->
     <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
     <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
 
@@ -71,10 +140,20 @@
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
-  <!-- Блок статуса отметки -->
-  <div class="card">
-    <h2>🍽 Статус отметки</h2>
+  <!-- Блок статуса и подтверждения -->
+  <div id="actionCard" class="card hidden">
+    <h2>🍽 Подтверждение отметки</h2>
     <div id="userInfo" class="user-info"></div>
+
+    <!-- Интерфейс свайпа -->
+    <div id="swipeBox" class="swipe-box">
+      <div class="swipe-label">Проведите вправо для подтверждения</div>
+      <div id="swipeContainer" class="swipe-container">
+        <div id="swipeTrackFill" class="swipe-track-fill"></div>
+        <div id="swipeText" class="swipe-text">Свайпните вправо 👉</div>
+        <div id="swipeHandle" class="swipe-handle">➔</div>
+      </div>
+    </div>
 
     <!-- Уведомление об успехе -->
     <div id="successOverlay" class="overlay success-overlay hidden">
@@ -87,16 +166,9 @@
       <div class="big-icon">⛔</div>
       <div id="errorResult" class="status error">Питание запрещено!</div>
     </div>
-
-    <!-- Режим ожидания -->
-    <div id="idleOverlay" class="overlay idle-overlay hidden">
-      <div class="big-icon">ℹ️</div>
-      <div class="status idle">Вы авторизованы.<br>Для отметки отсканируйте QR-код на стойке.</div>
-    </div>
   </div>
 
   <script>
-    // 1. УНИВЕРСАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ IOS SAFARI (localStorage + Cookie Fallback)
     function setSavedData(key, value) {
       try {
         localStorage.setItem(key, value);
@@ -108,10 +180,7 @@
 
     function getSavedData(key) {
       let val = null;
-      try {
-        val = localStorage.getItem(key);
-      } catch (e) {}
-
+      try { val = localStorage.getItem(key); } catch (e) {}
       if (val) return val;
 
       const matches = document.cookie.match(new RegExp(
@@ -120,23 +189,24 @@
       return matches ? decodeURIComponent(matches[1]) : "";
     }
 
-    // 2. ССЫЛКИ И НАСТРОЙКИ
     const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
     const FORM_URL          = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
 
-    const ENTRY_NAME      = 'entry.1408210808'; 
-    const ENTRY_COMPANY   = 'entry.1935797578'; 
-    const ENTRY_IIN       = 'entry.725430315';  
-    const ENTRY_COST_CODE = 'entry.1791590417'; 
+    const ENTRY_NAME       = 'entry.1408210808'; 
+    const ENTRY_COMPANY    = 'entry.1935797578'; 
+    const ENTRY_IIN        = 'entry.725430315';  
+    const ENTRY_COST_CODE  = 'entry.1791590417'; 
 
     let operatorsDatabase = {};
     let loadedCount = 0;
     let isDbLoaded = false;
     let currentUser = null;
     let countdownTimer = null;
+    let isSubmitting = false;
 
     document.addEventListener("DOMContentLoaded", () => {
       initDatabase();
+      initSwipeControl();
     });
 
     function cleanString(str) {
@@ -157,17 +227,13 @@
       input.placeholder = "Например: 242242 или ИИН";
     }
 
-    // 3. ИНИЦИАЛИЗАЦИЯ БАЗЫ (КЭШ + ФОНОВОЕ ОБНОВЛЕНИЕ)
     function initDatabase() {
       const cachedCsv = getSavedData("cached_db_csv");
 
       if (cachedCsv) {
-        // Загружаем кэш МГНОВЕННО
         parseCsvAndInit(cachedCsv, true);
-        // Свежую базу скачиваем фоном
         fetchLatestDatabaseInBackground();
       } else {
-        // Если кэша нет — качаем из сети напрямую
         loadDatabaseFromGoogleSheet();
       }
     }
@@ -186,6 +252,9 @@
           
           unlockUI();
           processAutoCheckin();
+        },
+        error: function(err) {
+          console.error("Ошибка парсинга CSV:", err);
         }
       });
     }
@@ -201,10 +270,9 @@
         
         const csvText = await response.text();
         if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) {
-             throw new Error("Получен HTML вместо CSV");
+           throw new Error("Получен HTML вместо CSV");
         }
 
-        // Сохраняем свежую базу в кэш
         setSavedData("cached_db_csv", csvText);
         parseCsvAndInit(csvText, false);
 
@@ -215,7 +283,6 @@
       }
     }
 
-    // Незаметная загрузка свежих данных в память на фоне
     async function fetchLatestDatabaseInBackground() {
       const timestamp = new Date().getTime();
       const csvUrl = `${PUBLISHED_CSV_URL}&t=${timestamp}`;
@@ -227,7 +294,6 @@
         const csvText = await response.text();
         if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) return;
 
-        // Тихо обновляем кэш в памяти
         setSavedData("cached_db_csv", csvText);
         Papa.parse(csvText, {
           skipEmptyLines: true,
@@ -248,13 +314,13 @@
       rows.forEach((cols, index) => {
         if (index === 0 || cols.length < 2) return;
 
-        const rawId      = cleanString(cols[0]);               // A: ID
+        const rawId      = cleanString(cols[0]);       // A: ID
         const digitId    = getCleanDigits(rawId);
-        const fio        = cleanString(cols[1]);               // B: ФИО
-        const company    = cleanString(cols[2]);               // C: Организация
-        const iin        = cleanString(cols[3]);               // D: ИИН
-        const permission = cleanString(cols[4] || "No");       // E: Статус Yes/No
-        const costCode   = cleanString(cols[5] || "");         // F: Кост-код
+        const fio        = cleanString(cols[1]);       // B: ФИО
+        const company    = cleanString(cols[2]);       // C: Организация
+        const iin        = cleanString(cols[3]);       // D: ИИН
+        const permission = cleanString(cols[4] || "No");// E: Статус Yes/No
+        const costCode   = cleanString(cols[5] || ""); // F: Кост-код
 
         if (fio && (rawId || iin)) {
           const userObj = { fio, company, permission, iin, costCode };
@@ -289,38 +355,33 @@
       if (!currentUser) {
         showSettings();
         alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе. Введите данные повторно.`);
-        fetchLatestDatabaseInBackground(); // Обновляем базу на фоне, если юзер не найден
+        fetchLatestDatabaseInBackground();
         return;
       }
 
       hideSettings();
-      updateUserInfoDisplay(currentUser);
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const isAutoMode = urlParams.get('auto') === '1';
-
-      if (isAutoMode) {
-        window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
-        executeCheckin(currentUser);
-      } else {
-        showIdle();
-      }
+      prepareCheckinView(currentUser);
     }
 
-    function executeCheckin(user) {
+    function prepareCheckinView(user) {
+      document.getElementById("actionCard").classList.remove("hidden");
+      updateUserInfoDisplay(user);
+
       const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
 
       if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка НЕ отправлена!`);
-        // 🔄 ОБНОВЛЯЕМ БАЗУ НА ФОНЕ ПРИ ОТКАЗЕ ДОСТУПА
+        document.getElementById("swipeBox").classList.add("hidden");
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка запрещена!`);
         fetchLatestDatabaseInBackground();
       } else {
-        sendToGoogleFormAuto(user);
+        hideOverlays();
+        document.getElementById("swipeBox").classList.remove("hidden");
+        resetSwipeUI();
       }
     }
 
     function saveSettings() {
-      if (!isDbLoaded) return;
+      if (!isDbLoaded || isSubmitting) return;
 
       const inputId = document.getElementById("operatorId").value;
       if (!inputId.trim()) {
@@ -336,10 +397,10 @@
       }
 
       setSavedData("app_operator_id", inputId.trim());
+      currentUser = user;
       
-      executeCheckin(user);
       hideSettings();
-      updateUserInfoDisplay(user);
+      prepareCheckinView(currentUser);
     }
 
     function hideSettings() {
@@ -350,7 +411,7 @@
     function showSettings() {
       document.getElementById("settingsCard").classList.remove("hidden");
       document.getElementById("toggleSettingsBtn").classList.add("hidden");
-      hideAllOverlays();
+      document.getElementById("actionCard").classList.add("hidden");
     }
 
     function toggleSettings() {
@@ -362,10 +423,15 @@
     function updateUserInfoDisplay(user) {
       document.getElementById("userInfo").innerHTML = 
         `👤 <strong>${user.fio}</strong><br>` +
-        `<span style="font-size:0.8rem; color:#606770;">${user.company} | ИИН: ${user.iin || '—'} | Кост: ${user.costCode || '—'}</span>`;
+        `<span style="font-size:0.85rem; color:#606770;">${user.company} | ИИН: ${user.iin || '—'} | Кост: ${user.costCode || '—'}</span>`;
     }
 
     function sendToGoogleFormAuto(user) {
+      if (isSubmitting) return;
+      isSubmitting = true;
+
+      document.getElementById("swipeBox").classList.add("hidden");
+
       let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
       if (!postUrl.endsWith('/formResponse')) {
         postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
@@ -386,32 +452,32 @@
         body: params.toString()
       })
       .then(() => {
+        isSubmitting = false;
         showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`);
-        // 🔄 ОБНОВЛЯЕМ БАЗУ НА ФОНЕ ПРИ УСПЕШНОЙ ОТМЕТКЕ
         fetchLatestDatabaseInBackground();
       })
       .catch((err) => {
+        isSubmitting = false;
         showError("❌ Ошибка при отправке. Проверьте интернет.");
         fetchLatestDatabaseInBackground();
       });
     }
 
-    function hideAllOverlays() {
+    function hideOverlays() {
       if (countdownTimer) clearInterval(countdownTimer);
       document.getElementById("successOverlay").classList.add("hidden");
       document.getElementById("errorOverlay").classList.add("hidden");
-      document.getElementById("idleOverlay").classList.add("hidden");
     }
 
     function showError(errorText) {
-      hideAllOverlays();
+      hideOverlays();
       const errorDiv = document.getElementById("errorResult");
       errorDiv.innerText = errorText;
       document.getElementById("errorOverlay").classList.remove("hidden");
     }
 
     function showSuccess(successText) {
-      hideAllOverlays();
+      hideOverlays();
       document.getElementById("successOverlay").classList.remove("hidden");
       startCountdown(300, successText);
     }
@@ -422,25 +488,161 @@
       
       if (countdownTimer) clearInterval(countdownTimer);
 
+      const formattedBaseText = baseText.replace(/\n/g, '<br>');
+
       countdownTimer = setInterval(() => {
         const minutes = Math.floor(timeLeft / 60);
         const secs = timeLeft % 60;
         const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         
-        scanResultDiv.innerHTML = `${baseText}<br><br><span style="font-size: 1.1rem; color: #1877f2; font-weight: bold;">⏱ Экран закроется через: ${timeString}</span>`;
+        scanResultDiv.innerHTML = `${formattedBaseText}<br><br><span style="font-size: 1.1rem; color: #1877f2; font-weight: bold;">⏱ Экран сбросится через: ${timeString}</span>`;
         
         timeLeft--;
 
         if (timeLeft < 0) {
           clearInterval(countdownTimer);
-          showIdle();
+          prepareCheckinView(currentUser);
         }
       }, 1000);
     }
 
-    function showIdle() {
-      hideAllOverlays();
-      document.getElementById("idleOverlay").classList.remove("hidden");
+    /* --- Функция обратной связи (Вибрация + Звук) --- */
+    function triggerSuccessFeedback() {
+      // 1. Виброотклик (для устройств с поддержкой)
+      if ("vibrate" in navigator) {
+        try {
+          navigator.vibrate([80, 40, 120]);
+        } catch (e) {
+          console.warn("Вибрация не поддержана:", e);
+        }
+      }
+
+      // 2. Звуковой сигнал через Web Audio API (без внешних MP3)
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        
+        const audioCtx = new AudioContext();
+        const now = audioCtx.currentTime;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = "sine";
+        
+        // Воспроизводим короткий мажорный аккорд (C5 -> E5 -> G5)
+        osc.frequency.setValueAtTime(523.25, now);       // До
+        osc.frequency.setValueAtTime(659.25, now + 0.08); // Ми
+        osc.frequency.setValueAtTime(783.99, now + 0.16); // Соль
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.35);
+      } catch (e) {
+        console.warn("Аудио заблокировано браузером или не поддерживается:", e);
+      }
+    }
+
+    /* --- Логика сенсорного Свайпа --- */
+    let isDragging = false;
+    let startX = 0;
+    let currentX = 0;
+
+    function resetSwipeUI() {
+      const handle = document.getElementById("swipeHandle");
+      const fill = document.getElementById("swipeTrackFill");
+      const text = document.getElementById("swipeText");
+
+      handle.style.transform = `translateX(0px)`;
+      fill.style.width = `0px`;
+      text.innerText = "Свайпните вправо 👉";
+      text.style.opacity = "1";
+      isDragging = false;
+    }
+
+    function initSwipeControl() {
+      const container = document.getElementById("swipeContainer");
+      const handle = document.getElementById("swipeHandle");
+      const fill = document.getElementById("swipeTrackFill");
+      const text = document.getElementById("swipeText");
+
+      const onStart = (e) => {
+        if (isSubmitting) return;
+        isDragging = true;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        let deltaX = x - startX;
+
+        const maxSwipe = container.clientWidth - handle.clientWidth - 6;
+
+        if (deltaX < 0) deltaX = 0;
+        if (deltaX > maxSwipe) deltaX = maxSwipe;
+
+        currentX = deltaX;
+        handle.style.transform = `translateX(${deltaX}px)`;
+        fill.style.width = `${deltaX + 25}px`;
+
+        const progress = deltaX / maxSwipe;
+        text.style.opacity = 1 - progress * 1.5;
+
+        if (progress >= 0.85) {
+          text.innerText = "Отпускайте! ✔️";
+        } else {
+          text.innerText = "Свайпните вправо 👉";
+        }
+      };
+
+      const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+
+        const maxSwipe = container.clientWidth - handle.clientWidth - 6;
+        if (currentX >= maxSwipe * 0.85) {
+          // Успешный свайп
+          handle.style.transform = `translateX(${maxSwipe}px)`;
+          fill.style.width = `${container.clientWidth}px`;
+          text.innerText = "Отправка...";
+          text.style.opacity = "1";
+          
+          // Активируем звук и вибрацию
+          triggerSuccessFeedback();
+
+          setTimeout(() => {
+            if (currentUser) sendToGoogleFormAuto(currentUser);
+          }, 150);
+        } else {
+          // Возврат назад
+          handle.style.transition = "transform 0.2s ease-out";
+          fill.style.transition = "width 0.2s ease-out";
+          
+          handle.style.transform = `translateX(0px)`;
+          fill.style.width = `0px`;
+          text.style.opacity = "1";
+          text.innerText = "Свайпните вправо 👉";
+
+          setTimeout(() => {
+            handle.style.transition = "";
+            fill.style.transition = "";
+          }, 200);
+        }
+      };
+
+      handle.addEventListener("touchstart", onStart, { passive: true });
+      window.addEventListener("touchmove", onMove, { passive: true });
+      window.addEventListener("touchend", onEnd);
+
+      handle.addEventListener("mousedown", onStart);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onEnd);
     }
   </script>
 </body>
