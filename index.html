@@ -4,190 +4,79 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>QR Meal Check-in</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 16px; color: #1c1e21; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 16px; color: #1c1e21; }
     .card { background: #ffffff; padding: 22px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 16px; }
     h2 { margin-top: 0; font-size: 1.1rem; color: #0066fe; font-weight: 700; }
     label { display: block; margin-top: 10px; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #65676b; }
-    
-    input { width: 100%; padding: 14px; border: 1.5px solid #e1e4e8; border-radius: 10px; font-size: 1.1rem; text-align: center; font-weight: bold; transition: all 0.2s; outline: none; }
+    input { width: 100%; padding: 14px; border: 1.5px solid #e1e4e8; border-radius: 10px; font-size: 1.1rem; text-align: center; font-weight: bold; outline: none; }
     input:focus { border-color: #0066fe; box-shadow: 0 0 0 3px rgba(0,102,254,0.15); }
-    button { width: 100%; padding: 14px; margin-top: 14px; background: #0066fe; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-    button:active { transform: scale(0.98); }
-    
-    input:disabled { background-color: #f2f3f5; color: #8d949e; border-color: #dcdee1; cursor: not-allowed; }
-    button:disabled { background-color: #a0c4ff; cursor: not-allowed; opacity: 0.7; }
-
-    .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: 600; font-size: 0.85rem; padding: 10px; border-radius: 10px; }
-    
-    .overlay {
-      width: 100%;
-      min-height: 240px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      border-radius: 14px;
-      padding: 20px;
-      margin-top: 12px;
-      text-align: center;
-    }
+    button { width: 100%; padding: 14px; margin-top: 14px; background: #0066fe; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+    .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-size: 0.85rem; padding: 10px; border-radius: 10px; }
+    .overlay { width: 100%; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 14px; padding: 20px; margin-top: 12px; text-align: center; }
     .success-overlay { background: #f0fdf4; border: 2px dashed #22c55e; }
     .error-overlay { background: #fef2f2; border: 2px dashed #ef4444; }
     .idle-overlay { background: #f8fafc; border: 2px dashed #cbd5e1; }
     .swipe-overlay { background: #f0f7ff; border: 2px dashed #3b82f6; }
-    
-    .big-icon { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
-    @keyframes popIn {
-      0% { transform: scale(0.5); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
-    }
-
+    .big-icon { font-size: 56px; margin-bottom: 8px; }
     .status { margin-top: 10px; font-size: 1rem; font-weight: 600; text-align: center; white-space: pre-line; }
     .success { color: #16a34a; }
     .error { color: #dc2626; }
     .idle { color: #64748b; }
     .hidden { display: none !important; }
-    .user-info { font-size: 0.95rem; color: #0066fe; margin-bottom: 8px; text-align: center; font-weight: 600; line-height: 1.4; }
+    .user-info { font-size: 0.95rem; color: #0066fe; margin-bottom: 8px; text-align: center; font-weight: 600; }
     .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
 
-    /* === СВАЙПЕР === */
-    .swipe-container {
-      width: 100%;
-      max-width: 320px;
-      margin: 20px auto 0 auto;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: pan-y;
-    }
-    .swipe-track {
-      position: relative;
-      height: 60px;
-      background: #eef2f7;
-      border: 1px solid #e1e7ef;
-      border-radius: 30px;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
-    }
-    .swipe-fill {
-      position: absolute;
-      left: 0;
-      top: 0;
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(135deg, #0066fe 0%, #10b981 100%);
-      border-radius: 30px;
-      box-shadow: 0 0 12px rgba(0, 102, 254, 0.3);
-    }
-    .swipe-text {
-      position: relative;
-      z-index: 1;
-      font-weight: 700;
-      font-size: 0.9rem;
-      letter-spacing: 0.3px;
-      pointer-events: none;
-      color: #64748b;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: opacity 0.2s;
-    }
-    .swipe-text .arrows {
-      display: inline-flex;
-      gap: 2px;
-      animation: pulseArrow 1.5s infinite ease-in-out;
-    }
-    @keyframes pulseArrow {
-      0%, 100% { transform: translateX(0); opacity: 0.4; }
-      50% { transform: translateX(5px); opacity: 1; }
-    }
-    .swipe-thumb {
-      position: absolute;
-      left: 4px;
-      top: 4px;
-      width: 52px;
-      height: 52px;
-      background: #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      z-index: 2;
-      color: #0066fe;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .swipe-thumb:active {
-      cursor: grabbing;
-      transform: scale(1.06);
-      box-shadow: 0 6px 18px rgba(0, 102, 254, 0.3);
-    }
+    /* Свайпер */
+    .swipe-container { width: 100%; max-width: 320px; margin: 20px auto 0 auto; user-select: none; touch-action: pan-y; }
+    .swipe-track { position: relative; height: 60px; background: #eef2f7; border: 1px solid #e1e7ef; border-radius: 30px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .swipe-fill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: linear-gradient(135deg, #0066fe 0%, #10b981 100%); border-radius: 30px; }
+    .swipe-text { position: relative; z-index: 1; font-weight: 700; font-size: 0.9rem; color: #64748b; }
+    .swipe-thumb { position: absolute; left: 4px; top: 4px; width: 52px; height: 52px; background: #ffffff; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; cursor: grab; z-index: 2; color: #0066fe; }
   </style>
 </head>
 <body>
 
-  <!-- Блок авторизации -->
   <div id="settingsCard" class="card">
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
-
-    <input type="text" id="operatorId" placeholder="Например: 242242 или ИИН">
+    <input type="text" id="operatorId" placeholder="Например: 0305501574">
     <button id="submitBtn" onclick="saveSettings()">Войти в систему</button>
-
-    <div id="dbStatus" class="loading-text" style="color: #16a34a;">🟢 Система готовности к проверке активна</div>
+    <div id="dbStatus" class="loading-text">Загрузка базы данных...</div>
   </div>
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
 
-  <!-- Блок статуса отметки -->
   <div class="card">
     <h2>🍽 Статус отметки</h2>
     <div id="userInfo" class="user-info"></div>
 
-    <!-- Уведомление о необходимости СВАЙПА -->
     <div id="swipeOverlay" class="overlay swipe-overlay hidden">
       <div class="big-icon">📲</div>
-      <div style="font-weight: 700; color: #0066fe; font-size: 1.05rem;">QR-код прочитан</div>
+      <div style="font-weight: 700; color: #0066fe;">QR-код прочитан</div>
       <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">Свайпните для подтверждения питания</div>
       
       <div class="swipe-container">
         <div class="swipe-track" id="swipeTrack">
           <div class="swipe-fill" id="swipeFill"></div>
-          <span class="swipe-text" id="swipeText">
-            Подтвердить
-            <span class="arrows">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-8px;"><path d="M9 18l6-6-6-6"/></svg>
-            </span>
-          </span>
-          <div class="swipe-thumb" id="swipeThumb">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
+          <span class="swipe-text" id="swipeText">Подтвердить ➔</span>
+          <div class="swipe-thumb" id="swipeThumb">➔</div>
         </div>
       </div>
     </div>
 
-    <!-- Уведомление об успехе -->
     <div id="successOverlay" class="overlay success-overlay hidden">
       <div class="big-icon">✅</div>
       <div id="scanResult" class="status success">Питание отмечено!</div>
     </div>
 
-    <!-- Уведомление об отказе -->
     <div id="errorOverlay" class="overlay error-overlay hidden">
       <div class="big-icon">⛔</div>
       <div id="errorResult" class="status error">Питание запрещено!</div>
     </div>
 
-    <!-- Режим ожидания -->
     <div id="idleOverlay" class="overlay idle-overlay hidden">
       <div class="big-icon">ℹ️</div>
       <div class="status idle">Вы авторизованы.<br>Для отметки отсканируйте QR-код на стойке.</div>
@@ -195,8 +84,9 @@
   </div>
 
   <script>
-    // Вставьте сюда вашу ссылку веб-приложения Google Apps Script
-    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9lKdE1NVOlzxRGdCUcwQ4yAt93JERDu-HC4-lB1YRRyMLHP8k1qDh1P7_omXg4mS_/exec';
+    // Вставьте сюда ID вашей Google Таблицы (находится в ссылке между /d/ и /edit)
+    const SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/1ZUmmkWQbQlgl_2SdayoIJN7Ba2rm4rq8Jx0BSK2NrrI/edit?gid=41161104#gid=41161104';
+    const GID = '0'; // ID листа (обычно 0 для первого листа)
 
     const FORM_URL         = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
     const ENTRY_NAME       = 'entry.1408210808'; 
@@ -205,53 +95,53 @@
     const ENTRY_COST_CODE  = 'entry.1791590417'; 
 
     let currentUser = null;
+    let cachedRows = [];
     let countdownTimer = null;
     let currentX = 0;
 
     document.addEventListener("DOMContentLoaded", () => {
       initSwiperLogic();
-      processAutoCheckin();
+      loadDatabase();
     });
+
+    async function loadDatabase() {
+      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`;
+      try {
+        const response = await fetch(url);
+        const text = await response.text();
+        const json = JSON.parse(text.substring(47).slice(0, -2));
+        
+        cachedRows = json.table.rows.map(row => {
+          return {
+            id: row.c[0] ? String(row.c[0].v).trim() : '',
+            fio: row.c[1] ? String(row.c[1].v) : '',
+            company: row.c[2] ? String(row.c[2].v) : '',
+            iin: row.c[3] ? String(row.c[3].v).trim() : '',
+            costCode: row.c[4] ? String(row.c[4].v) : '',
+            permission: row.c[5] ? String(row.c[5].v) : ''
+          };
+        });
+
+        document.getElementById("dbStatus").innerText = "🟢 База данных загружена";
+        document.getElementById("dbStatus.style.color"] = "#16a34a";
+        processAutoCheckin();
+      } catch (e) {
+        document.getElementById("dbStatus").innerText = "❌ Ошибка загрузки базы данных";
+        document.getElementById("dbStatus").style.color = "#dc2626";
+      }
+    }
 
     function setSavedData(key, value) {
       try { localStorage.setItem(key, value); } catch (e) {}
-      const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-      document.cookie = `${key}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
     }
 
     function getSavedData(key) {
-      let val = null;
-      try { val = localStorage.getItem(key); } catch (e) {}
-      if (val) return val;
-      const matches = document.cookie.match(new RegExp("(?:^|; )" + key.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"));
-      return matches ? decodeURIComponent(matches[1]) : "";
+      try { return localStorage.getItem(key); } catch (e) { return ""; }
     }
 
-    function cleanString(str) {
-      if (!str) return '';
-      return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
-    }
-
-    // Запрос к защищенному серверу Google Apps Script для поиска сотрудника по ID/ИИН
-    async function findUserOnServer(idInput) {
-      const cleaned = cleanString(idInput);
-      if (!cleaned) return null;
-      try {
-        const response = await fetch(`${APPS_SCRIPT_URL}?id=${encodeURIComponent(cleaned)}`);
-        const data = await response.json();
-        if (data && data.found) {
-          return {
-            fio: data.fio,
-            company: data.company,
-            iin: data.iin,
-            costCode: data.costCode,
-            permission: data.permission
-          };
-        }
-      } catch (e) {
-        console.error("Ошибка проверки:", e);
-      }
-      return null;
+    function findUserLocally(input) {
+      const cleaned = String(input).trim();
+      return cachedRows.find(r => r.id === cleaned || r.iin === cleaned);
     }
 
     async function processAutoCheckin() {
@@ -259,25 +149,17 @@
       const urlParams = new URLSearchParams(window.location.search);
       const isAutoMode = urlParams.get('auto') === '1';
 
-      if (!savedId) { showSettings(); return; }
+      if (!savedId) return;
 
-      currentUser = await findUserOnServer(savedId);
-      if (!currentUser) {
-        showSettings();
-        alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе или нет связи с сервером.`);
-        return;
-      }
+      currentUser = findUserLocally(savedId);
+      if (!currentUser) return;
 
       hideSettings();
       updateUserInfoDisplay(currentUser);
 
       const savedLockExpires = parseInt(getSavedData("app_lock_expires_time") || "0", 10);
-      const now = Date.now();
-
-      if (savedLockExpires > now) {
-        const remainingSeconds = Math.ceil((savedLockExpires - now) / 1000);
-        const savedFio = getSavedData("app_lock_fio") || currentUser.fio;
-        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${savedFio}`, remainingSeconds);
+      if (savedLockExpires > Date.now()) {
+        showSuccess(`✅ Питание уже отмечено!\nСотрудник: ${currentUser.fio}`, Math.ceil((savedLockExpires - Date.now()) / 1000));
         return;
       }
 
@@ -289,38 +171,17 @@
       }
     }
 
-    async function executeCheckin(user) {
-      // Проверяем актуальный статус через сервер перед отправкой
-      const freshUser = await findUserOnServer(getSavedData("app_operator_id"));
-      const perm = freshUser ? freshUser.permission : user.permission;
-      const permissionStatus = perm ? perm.toLowerCase() : "";
+    function saveSettings() {
+      const inputId = document.getElementById("operatorId").value.trim();
+      if (!inputId) { alert("Введите ID или ИИН!"); return; }
 
-      if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${perm || 'No'}".\nОтметка НЕ отправлена!`);
-      } else {
-        sendToGoogleFormAuto(user);
-      }
-    }
-
-    async function saveSettings() {
-      const inputId = document.getElementById("operatorId").value;
-      if (!inputId.trim()) { alert("Введите ID или ИИН!"); return; }
-
-      const btn = document.getElementById("submitBtn");
-      btn.innerText = "Проверка...";
-      btn.disabled = true;
-
-      const user = await findUserOnServer(inputId);
-      
-      btn.innerText = "Войти в систему";
-      btn.disabled = false;
-
+      const user = findUserLocally(inputId);
       if (!user) {
-        alert(`❌ Пользователь с ID/ИИН "${inputId.trim()}" не найден.`);
+        alert(`❌ Пользователь с ID/ИИН "${inputId}" не найден в базе.`);
         return;
       }
 
-      setSavedData("app_operator_id", inputId.trim());
+      setSavedData("app_operator_id", inputId);
       currentUser = user;
       hideSettings();
       updateUserInfoDisplay(user);
@@ -332,6 +193,39 @@
       } else {
         showIdle();
       }
+    }
+
+    function executeCheckin(user) {
+      const freshUser = findUserLocally(user.id || user.iin);
+      const perm = freshUser ? freshUser.permission.toLowerCase() : "";
+
+      if (perm !== "yes") {
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус: "${freshUser ? freshUser.permission : 'No'}".`);
+      } else {
+        sendToGoogleFormAuto(user);
+      }
+    }
+
+    function sendToGoogleFormAuto(user) {
+      let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
+      const params = new URLSearchParams();
+      params.append(ENTRY_NAME, user.fio);
+      params.append(ENTRY_COMPANY, user.company);
+      params.append(ENTRY_IIN, user.iin);
+      params.append(ENTRY_COST_CODE, user.costCode);
+
+      fetch(postUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      })
+      .then(() => {
+        const lockExpires = Date.now() + 300 * 1000;
+        setSavedData("app_lock_expires_time", lockExpires.toString());
+        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`, 300);
+      })
+      .catch(() => showError("❌ Ошибка при отправке. Проверьте интернет."));
     }
 
     function hideSettings() {
@@ -357,33 +251,6 @@
         `<span style="font-size:0.8rem; color:#64748b;">${user.company} | ИИН: ${user.iin || '—'} | Кост: ${user.costCode || '—'}</span>`;
     }
 
-    function sendToGoogleFormAuto(user) {
-      let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
-      if (!postUrl.endsWith('/formResponse')) postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
-
-      const params = new URLSearchParams();
-      params.append(ENTRY_NAME, user.fio);
-      params.append(ENTRY_COMPANY, user.company);
-      params.append(ENTRY_IIN, user.iin);
-      params.append(ENTRY_COST_CODE, user.costCode);
-
-      fetch(postUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString()
-      })
-      .then(() => {
-        const lockExpires = Date.now() + 300 * 1000;
-        setSavedData("app_lock_expires_time", lockExpires.toString());
-        setSavedData("app_lock_fio", user.fio);
-        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`, 300);
-      })
-      .catch(() => {
-        showError("❌ Ошибка при отправке. Проверьте интернет.");
-      });
-    }
-
     function hideAllOverlays() {
       if (countdownTimer) clearInterval(countdownTimer);
       document.getElementById("successOverlay").classList.add("hidden");
@@ -398,16 +265,16 @@
       document.getElementById("swipeOverlay").classList.remove("hidden");
     }
 
-    function showError(errorText) {
+    function showError(text) {
       hideAllOverlays();
-      document.getElementById("errorResult").innerText = errorText;
+      document.getElementById("errorResultinnerText = text;
       document.getElementById("errorOverlay").classList.remove("hidden");
     }
 
-    function showSuccess(successText, seconds = 300) {
+    function showSuccess(text, seconds) {
       hideAllOverlays();
       document.getElementById("successOverlay").classList.remove("hidden");
-      startCountdown(seconds, successText);
+      startCountdown(seconds, text);
     }
 
     function startCountdown(seconds, baseText) {
@@ -418,11 +285,8 @@
       countdownTimer = setInterval(() => {
         const minutes = Math.floor(timeLeft / 60);
         const secs = timeLeft % 60;
-        const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-        
-        scanResultDiv.innerHTML = `${baseText}<br><br><span style="font-size: 1.1rem; color: #0066fe; font-weight: bold;">⏱ Экран закроется через: ${timeString}</span>`;
+        scanResultDiv.innerHTML = `${baseText}<br><br><span style="font-size: 1.1rem; color: #0066fe;">⏱ Закроется через: ${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}</span>`;
         timeLeft--;
-
         if (timeLeft < 0) {
           clearInterval(countdownTimer);
           setSavedData("app_lock_expires_time", "0");
@@ -436,99 +300,58 @@
       document.getElementById("idleOverlay").classList.remove("hidden");
     }
 
-    /* === СВАЙПЕР === */
     function initSwiperLogic() {
       const thumb = document.getElementById("swipeThumb");
       const track = document.getElementById("swipeTrack");
       const fill  = document.getElementById("swipeFill");
       const text  = document.getElementById("swipeText");
-
       if (!thumb || !track) return;
 
-      let isDragging = false;
-      let startX = 0;
-      let maxDrag = 0;
-
-      function getClientX(e) {
-        if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
-        if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientX;
-        return e.clientX;
-      }
+      let isDragging = false, startX = 0, maxDrag = 0;
 
       function onStart(e) {
         isDragging = true;
-        startX = getClientX(e);
-        currentX = 0;
-        const trackRect = track.getBoundingClientRect();
-        const thumbRect = thumb.getBoundingClientRect();
-        maxDrag = trackRect.width - thumbRect.width - 8;
-        if (maxDrag <= 0) maxDrag = 200;
-
-        thumb.style.transition = "none";
-        fill.style.transition = "none";
-        text.style.transition = "opacity 0.2s";
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        maxDrag = track.getBoundingClientRect().width - thumb.getBoundingClientRect().width - 8;
       }
-
       function onMove(e) {
         if (!isDragging) return;
-        const x = getClientX(e);
-        let delta = x - startX;
+        let delta = (e.touches ? e.touches[0].clientX : e.clientX) - startX;
         if (delta < 0) delta = 0;
         if (delta > maxDrag) delta = maxDrag;
-
         currentX = delta;
         thumb.style.transform = `translateX(${delta}px)`;
         fill.style.width = `${(delta / maxDrag) * 100}%`;
-        text.style.opacity = `${1 - (delta / maxDrag) * 1.5}`;
       }
-
       function onEnd() {
         if (!isDragging) return;
         isDragging = false;
-
         if (maxDrag > 0 && currentX >= maxDrag * 0.75) {
-          thumb.style.transform = `translateX(${maxDrag}px)`;
-          fill.style.width = "100%";
-          text.style.opacity = "0";
-          currentX = 0;
           setTimeout(() => {
             resetSwiper();
             hideAllOverlays();
             if (currentUser) executeCheckin(currentUser);
-          }, 180);
+          }, 150);
         } else {
-          thumb.style.transition = "transform 0.25s cubic-bezier(0.18, 0.89, 0.32, 1.28)";
-          fill.style.transition = "width 0.25s ease-out";
-          text.style.transition = "opacity 0.25s ease-out";
-          thumb.style.transform = "translateX(0px)";
-          fill.style.width = "0%";
-          text.style.opacity = "1";
-          currentX = 0;
+          resetSwiper();
         }
       }
 
       thumb.addEventListener("mousedown", onStart);
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onEnd);
-
       thumb.addEventListener("touchstart", onStart, { passive: true });
       window.addEventListener("touchmove", onMove, { passive: true });
       window.addEventListener("touchend", onEnd);
-      window.addEventListener("touchcancel", onEnd);
     }
 
     function resetSwiper() {
       currentX = 0;
       const thumb = document.getElementById("swipeThumb");
       const fill  = document.getElementById("swipeFill");
-      const text  = document.getElementById("swipeText");
-      if (thumb && fill && text) {
-        thumb.style.transition = "none";
-        fill.style.transition = "none";
-        text.style.transition = "none";
+      if (thumb && fill) {
         thumb.style.transform = "translateX(0px)";
         fill.style.width = "0%";
-        text.style.opacity = "1";
       }
     }
   </script>
