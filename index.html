@@ -55,7 +55,7 @@
     .user-info { font-size: 0.95rem; color: #0066fe; margin-bottom: 8px; text-align: center; font-weight: 600; line-height: 1.4; }
     .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
 
-    /* === НОВЫЙ ДИЗАЙН СВАЙПЕРА === */
+    /* === СВАЙПЕР === */
     .swipe-container {
       width: 100%;
       max-width: 320px;
@@ -131,7 +131,6 @@
       box-shadow: 0 6px 18px rgba(0, 102, 254, 0.3);
     }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
@@ -140,10 +139,10 @@
     <h2>👤 Авторизация по ID / ИИН</h2>
     <label for="operatorId">Введите ваш ID или ИИН:</label>
 
-    <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
-    <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
+    <input type="text" id="operatorId" placeholder="Например: 242242 или ИИН">
+    <button id="submitBtn" onclick="saveSettings()">Войти в систему</button>
 
-    <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
+    <div id="dbStatus" class="loading-text" style="color: #16a34a;">🟢 Система готовности к проверке активна</div>
   </div>
 
   <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
@@ -196,6 +195,24 @@
   </div>
 
   <script>
+    // Вставьте сюда вашу ссылку веб-приложения Google Apps Script
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9lKdE1NVOlzxRGdCUcwQ4yAt93JERDu-HC4-lB1YRRyMLHP8k1qDh1P7_omXg4mS_/exec';
+
+    const FORM_URL         = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
+    const ENTRY_NAME       = 'entry.1408210808'; 
+    const ENTRY_COMPANY    = 'entry.1935797578'; 
+    const ENTRY_IIN        = 'entry.725430315';  
+    const ENTRY_COST_CODE  = 'entry.1791590417'; 
+
+    let currentUser = null;
+    let countdownTimer = null;
+    let currentX = 0;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initSwiperLogic();
+      processAutoCheckin();
+    });
+
     function setSavedData(key, value) {
       try { localStorage.setItem(key, value); } catch (e) {}
       const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
@@ -210,144 +227,44 @@
       return matches ? decodeURIComponent(matches[1]) : "";
     }
 
-    const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
-    const FORM_URL          = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-
-    const ENTRY_NAME      = 'entry.1408210808'; 
-    const ENTRY_COMPANY   = 'entry.1935797578'; 
-    const ENTRY_IIN       = 'entry.725430315';  
-    const ENTRY_COST_CODE = 'entry.1791590417'; 
-
-    let operatorsDatabase = {};
-    let loadedCount = 0;
-    let isDbLoaded = false;
-    let currentUser = null;
-    let countdownTimer = null;
-    let currentX = 0;
-
-    document.addEventListener("DOMContentLoaded", () => {
-      initDatabase();
-      initSwiperLogic();
-    });
-
     function cleanString(str) {
       if (!str) return '';
       return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
     }
 
-    function getCleanDigits(str) {
-      return cleanString(str).replace(/\D/g, '');
-    }
-
-    function unlockUI() {
-      const input = document.getElementById("operatorId");
-      const btn = document.getElementById("submitBtn");
-      input.disabled = false;
-      btn.disabled = false;
-      input.placeholder = "Например: 242242 или ИИН";
-    }
-
-    function initDatabase() {
-      const cachedCsv = getSavedData("cached_db_csv");
-      if (cachedCsv) {
-        parseCsvAndInit(cachedCsv, true);
-        fetchLatestDatabaseInBackground();
-      } else {
-        loadDatabaseFromGoogleSheet();
-      }
-    }
-
-    function parseCsvAndInit(csvText, isFromCache = false) {
-      const statusDiv = document.getElementById("dbStatus");
-      Papa.parse(csvText, {
-        skipEmptyLines: true,
-        complete: function(results) {
-          parseParsedRows(results.data);
-          isDbLoaded = true;
-          statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)${isFromCache ? ' ⚡' : ''}`;
-          statusDiv.style.color = "#16a34a";
-          unlockUI();
-          processAutoCheckin();
-        }
-      });
-    }
-
-    async function loadDatabaseFromGoogleSheet() {
-      const statusDiv = document.getElementById("dbStatus");
-      const timestamp = new Date().getTime();
+    // Запрос к защищенному серверу Google Apps Script для поиска сотрудника по ID/ИИН
+    async function findUserOnServer(idInput) {
+      const cleaned = cleanString(idInput);
+      if (!cleaned) return null;
       try {
-        const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`);
-        if (!response.ok) throw new Error("Ошибка ответа от Google");
-        const csvText = await response.text();
-        if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) throw new Error("Неверный формат");
-        setSavedData("cached_db_csv", csvText);
-        parseCsvAndInit(csvText, false);
-      } catch (err) {
-        statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
-        statusDiv.style.color = "#dc2626";
-      }
-    }
-
-    async function fetchLatestDatabaseInBackground() {
-      const timestamp = new Date().getTime();
-      try {
-        const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`);
-        if (!response.ok) return;
-        const csvText = await response.text();
-        if (csvText.includes("<html")) return;
-        setSavedData("cached_db_csv", csvText);
-        Papa.parse(csvText, {
-          skipEmptyLines: true,
-          complete: function(results) { parseParsedRows(results.data); }
-        });
-      } catch (err) {}
-    }
-
-    function parseParsedRows(rows) {
-      operatorsDatabase = {};
-      loadedCount = 0;
-      rows.forEach((cols, index) => {
-        if (index === 0 || cols.length < 2) return;
-        const rawId      = cleanString(cols[0]);
-        const digitId    = getCleanDigits(rawId);
-        const fio        = cleanString(cols[1]);
-        const company    = cleanString(cols[2]);
-        const iin        = cleanString(cols[3]);
-        const permission = cleanString(cols[4] || "No");
-        const costCode   = cleanString(cols[5] || "");
-
-        if (fio && (rawId || iin)) {
-          const userObj = { fio, company, permission, iin, costCode };
-          if (rawId) operatorsDatabase[rawId] = userObj;
-          if (digitId) operatorsDatabase[digitId] = userObj;
-          if (iin) {
-            operatorsDatabase[iin] = userObj;
-            const digitIin = getCleanDigits(iin);
-            if (digitIin) operatorsDatabase[digitIin] = userObj;
-          }
-          loadedCount++;
+        const response = await fetch(`${APPS_SCRIPT_URL}?id=${encodeURIComponent(cleaned)}`);
+        const data = await response.json();
+        if (data && data.found) {
+          return {
+            fio: data.fio,
+            company: data.company,
+            iin: data.iin,
+            costCode: data.costCode,
+            permission: data.permission
+          };
         }
-      });
+      } catch (e) {
+        console.error("Ошибка проверки:", e);
+      }
+      return null;
     }
 
-    function findUser(idInput) {
-      const cleanedInput = cleanString(idInput);
-      const digitsOnly = getCleanDigits(idInput);
-      return operatorsDatabase[cleanedInput] || operatorsDatabase[digitsOnly] || null;
-    }
-
-    function processAutoCheckin() {
+    async function processAutoCheckin() {
       const savedId = getSavedData("app_operator_id");
       const urlParams = new URLSearchParams(window.location.search);
       const isAutoMode = urlParams.get('auto') === '1';
 
       if (!savedId) { showSettings(); return; }
 
-      currentUser = findUser(savedId);
+      currentUser = await findUserOnServer(savedId);
       if (!currentUser) {
         showSettings();
-        alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе.`);
-        fetchLatestDatabaseInBackground();
+        alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе или нет связи с сервером.`);
         return;
       }
 
@@ -372,25 +289,34 @@
       }
     }
 
-    function executeCheckin(user) {
-      const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
+    async function executeCheckin(user) {
+      // Проверяем актуальный статус через сервер перед отправкой
+      const freshUser = await findUserOnServer(getSavedData("app_operator_id"));
+      const perm = freshUser ? freshUser.permission : user.permission;
+      const permissionStatus = perm ? perm.toLowerCase() : "";
+
       if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка НЕ отправлена!`);
-        fetchLatestDatabaseInBackground();
+        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${perm || 'No'}".\nОтметка НЕ отправлена!`);
       } else {
         sendToGoogleFormAuto(user);
       }
     }
 
-    function saveSettings() {
-      if (!isDbLoaded) return;
+    async function saveSettings() {
       const inputId = document.getElementById("operatorId").value;
       if (!inputId.trim()) { alert("Введите ID или ИИН!"); return; }
 
-      const user = findUser(inputId);
+      const btn = document.getElementById("submitBtn");
+      btn.innerText = "Проверка...";
+      btn.disabled = true;
+
+      const user = await findUserOnServer(inputId);
+      
+      btn.innerText = "Войти в систему";
+      btn.disabled = false;
+
       if (!user) {
         alert(`❌ Пользователь с ID/ИИН "${inputId.trim()}" не найден.`);
-        fetchLatestDatabaseInBackground();
         return;
       }
 
@@ -452,11 +378,9 @@
         setSavedData("app_lock_expires_time", lockExpires.toString());
         setSavedData("app_lock_fio", user.fio);
         showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`, 300);
-        fetchLatestDatabaseInBackground();
       })
       .catch(() => {
         showError("❌ Ошибка при отправке. Проверьте интернет.");
-        fetchLatestDatabaseInBackground();
       });
     }
 
@@ -512,7 +436,7 @@
       document.getElementById("idleOverlay").classList.remove("hidden");
     }
 
-    /* === ОБНОВЛЕННАЯ ЛОГИКА СВАЙПЕРА === */
+    /* === СВАЙПЕР === */
     function initSwiperLogic() {
       const thumb = document.getElementById("swipeThumb");
       const track = document.getElementById("swipeTrack");
