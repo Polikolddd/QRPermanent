@@ -1,612 +1,165 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>QR Meal Check-in</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 16px; color: #1c1e21; }
-    .card { background: #ffffff; padding: 22px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 16px; }
-    h2 { margin-top: 0; font-size: 1.1rem; color: #0066fe; font-weight: 700; }
-    label { display: block; margin-top: 10px; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #65676b; }
-    
-    input { width: 100%; padding: 14px; border: 1.5px solid #e1e4e8; border-radius: 10px; font-size: 1.1rem; text-align: center; font-weight: bold; transition: all 0.2s; outline: none; }
-    input:focus { border-color: #0066fe; box-shadow: 0 0 0 3px rgba(0,102,254,0.15); }
-    button { width: 100%; padding: 14px; margin-top: 14px; background: #0066fe; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-    button:active { transform: scale(0.98); }
-    
-    input:disabled { background-color: #f2f3f5; color: #8d949e; border-color: #dcdee1; cursor: not-allowed; }
-    button:disabled { background-color: #a0c4ff; cursor: not-allowed; opacity: 0.7; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Автозаполнение Форм</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
-    .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: 600; font-size: 0.85rem; padding: 10px; border-radius: 10px; }
-    
-    .overlay {
-      width: 100%;
-      min-height: 240px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      border-radius: 14px;
-      padding: 20px;
-      margin-top: 12px;
-      text-align: center;
-    }
-    .success-overlay { background: #f0fdf4; border: 2px dashed #22c55e; }
-    .error-overlay { background: #fef2f2; border: 2px dashed #ef4444; }
-    .idle-overlay { background: #f8fafc; border: 2px dashed #cbd5e1; }
-    .swipe-overlay { background: #f0f7ff; border: 2px dashed #3b82f6; }
-    
-    .big-icon { font-size: 56px; margin-bottom: 8px; animation: popIn 0.3s ease-out; }
-    @keyframes popIn {
-      0% { transform: scale(0.5); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
-    }
-
-    .status { margin-top: 10px; font-size: 1rem; font-weight: 600; text-align: center; white-space: pre-line; }
-    .success { color: #16a34a; }
-    .error { color: #dc2626; }
-    .idle { color: #64748b; }
-    .hidden { display: none !important; }
-    .user-info { font-size: 0.95rem; color: #0066fe; margin-bottom: 8px; text-align: center; font-weight: 600; line-height: 1.4; }
-    .loading-text { font-size: 0.85rem; color: #8d949e; text-align: center; margin-top: 8px; font-weight: 600; }
-
-    /* === НОВЫЙ ДИЗАЙН СВАЙПЕРА === */
-    .swipe-container {
-      width: 100%;
-      max-width: 320px;
-      margin: 20px auto 0 auto;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: pan-y;
-    }
-    .swipe-track {
-      position: relative;
-      height: 60px;
-      background: #eef2f7;
-      border: 1px solid #e1e7ef;
-      border-radius: 30px;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
-    }
-    .swipe-fill {
-      position: absolute;
-      left: 0;
-      top: 0;
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(135deg, #0066fe 0%, #10b981 100%);
-      border-radius: 30px;
-      box-shadow: 0 0 12px rgba(0, 102, 254, 0.3);
-    }
-    .swipe-text {
-      position: relative;
-      z-index: 1;
-      font-weight: 700;
-      font-size: 0.9rem;
-      letter-spacing: 0.3px;
-      pointer-events: none;
-      color: #64748b;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: opacity 0.2s;
-    }
-    .swipe-text .arrows {
-      display: inline-flex;
-      gap: 2px;
-      animation: pulseArrow 1.5s infinite ease-in-out;
-    }
-    @keyframes pulseArrow {
-      0%, 100% { transform: translateX(0); opacity: 0.4; }
-      50% { transform: translateX(5px); opacity: 1; }
-    }
-    .swipe-thumb {
-      position: absolute;
-      left: 4px;
-      top: 4px;
-      width: 52px;
-      height: 52px;
-      background: #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      z-index: 2;
-      color: #0066fe;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .swipe-thumb:active {
-      cursor: grabbing;
-      transform: scale(1.06);
-      box-shadow: 0 6px 18px rgba(0, 102, 254, 0.3);
-    }
-  </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; margin: 0; background: #f4f4f5; color: #18181b; }
+    .card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    h3 { margin-top: 0; font-size: 18px; color: #0f172a; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
+    label { font-size: 13px; color: #64748b; font-weight: 600; margin-top: 10px; display: block; }
+    input, select { width: 100%; padding: 10px; margin-top: 4px; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 15px; }
+    button { width: 100%; padding: 12px; margin-top: 14px; border-radius: 8px; border: none; background: #2563eb; color: white; font-weight: 600; font-size: 16px; cursor: pointer; }
+    button:active { background: #1d4ed8; }
+    .btn-secondary { background: #475569; margin-top: 8px; }
+    .status-box { padding: 12px; background: #e0f2fe; color: #0369a1; border-radius: 8px; font-size: 14px; margin-top: 10px; word-break: break-all; }
+  </style>
 </head>
 <body>
 
-  <!-- Блок авторизации -->
-  <div id="settingsCard" class="card">
-    <h2>👤 Авторизация по ID / ИИН</h2>
-    <label for="operatorId">Введите ваш ID или ИИН:</label>
-
-    <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
-    <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
-
-    <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
-  </div>
-
-  <button id="toggleSettingsBtn" class="btn-secondary hidden" onclick="toggleSettings()">⚙️ Сменить ID / Профиль</button>
-
-  <!-- Блок статуса отметки -->
-  <div class="card">
-    <h2>🍽 Статус отметки</h2>
-    <div id="userInfo" class="user-info"></div>
-
-    <!-- Уведомление о необходимости СВАЙПА -->
-    <div id="swipeOverlay" class="overlay swipe-overlay hidden">
-      <div class="big-icon">📲</div>
-      <div style="font-weight: 700; color: #0066fe; font-size: 1.05rem;">QR-код прочитан</div>
-      <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">Свайпните для подтверждения питания</div>
-      
-      <div class="swipe-container">
-        <div class="swipe-track" id="swipeTrack">
-          <div class="swipe-fill" id="swipeFill"></div>
-          <span class="swipe-text" id="swipeText">
-            Подтвердить
-            <span class="arrows">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-8px;"><path d="M9 18l6-6-6-6"/></svg>
-            </span>
-          </span>
-          <div class="swipe-thumb" id="swipeThumb">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Уведомление об успехе -->
-    <div id="successOverlay" class="overlay success-overlay hidden">
-      <div class="big-icon">✅</div>
-      <div id="scanResult" class="status success">Питание отмечено!</div>
-    </div>
-
-    <!-- Уведомление об отказе -->
-    <div id="errorOverlay" class="overlay error-overlay hidden">
-      <div class="big-icon">⛔</div>
-      <div id="errorResult" class="status error">Питание запрещено!</div>
-    </div>
-
-    <!-- Режим ожидания -->
-    <div id="idleOverlay" class="overlay idle-overlay hidden">
-      <div class="big-icon">ℹ️</div>
-      <div class="status idle">Вы авторизованы.<br>Для отметки отсканируйте QR-код на стойке.</div>
-    </div>
-  </div>
-
-  <script>
-    function setSavedData(key, value) {
-      try { localStorage.setItem(key, value); } catch (e) {}
-      const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-      document.cookie = `${key}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
-    }
-
-    function getSavedData(key) {
-      let val = null;
-      try { val = localStorage.getItem(key); } catch (e) {}
-      if (val) return val;
-      const matches = document.cookie.match(new RegExp("(?:^|; )" + key.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"));
-      return matches ? decodeURIComponent(matches[1]) : "";
-    }
-
-    const PUBLISHED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOI08oO0YNF0Zu6Kd_EM53ZFcriAK3glDBMUoz7oFvczuYInArDm2IRBdvt5lVzvTS0HVYajVa1Yph/pub?gid=41161104&single=true&output=csv';
-    const FORM_URL          = 'https://docs.google.com/forms/d/e/1FAIpQLSdyI6Y-04_nYm8e0OCxjAmO7xaNHE9qjocjuuRXQznPEWbAmg/viewform'; 
-
-    const ENTRY_NAME      = 'entry.1408210808'; 
-    const ENTRY_COMPANY   = 'entry.1935797578'; 
-    const ENTRY_IIN       = 'entry.725430315';  
-    const ENTRY_COST_CODE = 'entry.1791590417'; 
-
-    let operatorsDatabase = {};
-    let loadedCount = 0;
-    let isDbLoaded = false;
-    let currentUser = null;
-    let countdownTimer = null;
-    let currentX = 0;
-
-    document.addEventListener("DOMContentLoaded", () => {
-      initDatabase();
-      initSwiperLogic();
-    });
-
-    function cleanString(str) {
-      if (!str) return '';
-      return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
-    }
-
-    function getCleanDigits(str) {
-      return cleanString(str).replace(/\D/g, '');
-    }
-
-    function unlockUI() {
-      const input = document.getElementById("operatorId");
-      const btn = document.getElementById("submitBtn");
-      input.disabled = false;
-      btn.disabled = false;
-      input.placeholder = "Например: 242242 или ИИН";
-    }
-
-    function initDatabase() {
-      const cachedCsv = getSavedData("cached_db_csv");
-      if (cachedCsv) {
-        parseCsvAndInit(cachedCsv, true);
-        fetchLatestDatabaseInBackground();
-      } else {
-        loadDatabaseFromGoogleSheet();
-      }
-    }
-
-    function parseCsvAndInit(csvText, isFromCache = false) {
-      const statusDiv = document.getElementById("dbStatus");
-      Papa.parse(csvText, {
-        skipEmptyLines: true,
-        complete: function(results) {
-          parseParsedRows(results.data);
-          isDbLoaded = true;
-          statusDiv.innerText = `🟢 База готова (${loadedCount} чел.)${isFromCache ? ' ⚡' : ''}`;
-          statusDiv.style.color = "#16a34a";
-          unlockUI();
-          processAutoCheckin();
-        }
-      });
-    }
-
-    async function loadDatabaseFromGoogleSheet() {
-      const statusDiv = document.getElementById("dbStatus");
-      const timestamp = new Date().getTime();
-      try {
-        const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`);
-        if (!response.ok) throw new Error("Ошибка ответа от Google");
-        const csvText = await response.text();
-        if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) throw new Error("Неверный формат");
-        setSavedData("cached_db_csv", csvText);
-        parseCsvAndInit(csvText, false);
-      } catch (err) {
-        statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
-        statusDiv.style.color = "#dc2626";
-      }
-    }
-
-    async function fetchLatestDatabaseInBackground() {
-      const timestamp = new Date().getTime();
-      try {
-        const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`);
-        if (!response.ok) return;
-        const csvText = await response.text();
-        if (csvText.includes("<html")) return;
-        setSavedData("cached_db_csv", csvText);
-        Papa.parse(csvText, {
-          skipEmptyLines: true,
-          complete: function(results) { parseParsedRows(results.data); }
-        });
-      } catch (err) {}
-    }
-
-    function parseParsedRows(rows) {
-      operatorsDatabase = {};
-      loadedCount = 0;
-      rows.forEach((cols, index) => {
-        if (index === 0 || cols.length < 2) return;
-        const rawId      = cleanString(cols[0]);
-        const digitId    = getCleanDigits(rawId);
-        const fio        = cleanString(cols[1]);
-        const company    = cleanString(cols[2]);
-        const iin        = cleanString(cols[3]);
-        const permission = cleanString(cols[4] || "No");
-        const costCode   = cleanString(cols[5] || "");
-
-        if (fio && (rawId || iin)) {
-          const userObj = { fio, company, permission, iin, costCode };
-          if (rawId) operatorsDatabase[rawId] = userObj;
-          if (digitId) operatorsDatabase[digitId] = userObj;
-          if (iin) {
-            operatorsDatabase[iin] = userObj;
-            const digitIin = getCleanDigits(iin);
-            if (digitIin) operatorsDatabase[digitIin] = userObj;
-          }
-          loadedCount++;
-        }
-      });
-    }
-
-    function findUser(idInput) {
-      const cleanedInput = cleanString(idInput);
-      const digitsOnly = getCleanDigits(idInput);
-      return operatorsDatabase[cleanedInput] || operatorsDatabase[digitsOnly] || null;
-    }
-
-    function processAutoCheckin() {
-      const savedId = getSavedData("app_operator_id");
-      const urlParams = new URLSearchParams(window.location.search);
-      const isAutoMode = urlParams.get('auto') === '1';
-
-      if (!savedId) { showSettings(); return; }
-
-      currentUser = findUser(savedId);
-      if (!currentUser) {
-        showSettings();
-        alert(`❌ Ваш ID/ИИН (${savedId}) не найден в базе.`);
-        fetchLatestDatabaseInBackground();
-        return;
-      }
-
-      hideSettings();
-      updateUserInfoDisplay(currentUser);
-
-      const savedLockExpires = parseInt(getSavedData("app_lock_expires_time") || "0", 10);
-      const now = Date.now();
-
-      if (savedLockExpires > now) {
-        const remainingSeconds = Math.ceil((savedLockExpires - now) / 1000);
-        const savedFio = getSavedData("app_lock_fio") || currentUser.fio;
-        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${savedFio}`, remainingSeconds);
-        return;
-      }
-
-      if (isAutoMode) {
-        window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
-        showSwipeOverlay();
-      } else {
-        showIdle();
-      }
-    }
-
-    function executeCheckin(user) {
-      const permissionStatus = user.permission ? user.permission.toLowerCase() : "";
-      if (permissionStatus !== "yes") {
-        showError(`⛔ Ошибка доступа!\nСотрудник: ${user.fio}\nСтатус доступа: "${user.permission}".\nОтметка НЕ отправлена!`);
-        fetchLatestDatabaseInBackground();
-      } else {
-        sendToGoogleFormAuto(user);
-      }
-    }
-
-    function saveSettings() {
-      if (!isDbLoaded) return;
-      const inputId = document.getElementById("operatorId").value;
-      if (!inputId.trim()) { alert("Введите ID или ИИН!"); return; }
-
-      const user = findUser(inputId);
-      if (!user) {
-        alert(`❌ Пользователь с ID/ИИН "${inputId.trim()}" не найден.`);
-        fetchLatestDatabaseInBackground();
-        return;
-      }
-
-      setSavedData("app_operator_id", inputId.trim());
-      currentUser = user;
-      hideSettings();
-      updateUserInfoDisplay(user);
-
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('auto') === '1') {
-        window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
-        showSwipeOverlay();
-      } else {
-        showIdle();
-      }
-    }
-
-    function hideSettings() {
-      document.getElementById("settingsCard").classList.add("hidden");
-      document.getElementById("toggleSettingsBtn").classList.remove("hidden");
-    }
-
-    function showSettings() {
-      document.getElementById("settingsCard").classList.remove("hidden");
-      document.getElementById("toggleSettingsBtn").classList.add("hidden");
-      hideAllOverlays();
-    }
-
-    function toggleSettings() {
-      const settingsCard = document.getElementById("settingsCard");
-      if (settingsCard.classList.contains("hidden")) showSettings();
-      else hideSettings();
-    }
-
-    function updateUserInfoDisplay(user) {
-      document.getElementById("userInfo").innerHTML = 
-        `👤 <strong>${user.fio}</strong><br>` +
-        `<span style="font-size:0.8rem; color:#64748b;">${user.company} | ИИН: ${user.iin || '—'} | Кост: ${user.costCode || '—'}</span>`;
-    }
-
-    function sendToGoogleFormAuto(user) {
-      let postUrl = FORM_URL.replace(/\/viewform.*/, '/formResponse');
-      if (!postUrl.endsWith('/formResponse')) postUrl = postUrl.replace(/\/$/, '') + '/formResponse';
-
-      const params = new URLSearchParams();
-      params.append(ENTRY_NAME, user.fio);
-      params.append(ENTRY_COMPANY, user.company);
-      params.append(ENTRY_IIN, user.iin);
-      params.append(ENTRY_COST_CODE, user.costCode);
-
-      fetch(postUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString()
-      })
-      .then(() => {
-        const lockExpires = Date.now() + 300 * 1000;
-        setSavedData("app_lock_expires_time", lockExpires.toString());
-        setSavedData("app_lock_fio", user.fio);
-        showSuccess(`✅ Питание успешно отмечено!\nСотрудник: ${user.fio}`, 300);
-        fetchLatestDatabaseInBackground();
-      })
-      .catch(() => {
-        showError("❌ Ошибка при отправке. Проверьте интернет.");
-        fetchLatestDatabaseInBackground();
-      });
-    }
-
-    function hideAllOverlays() {
-      if (countdownTimer) clearInterval(countdownTimer);
-      document.getElementById("successOverlay").classList.add("hidden");
-      document.getElementById("errorOverlay").classList.add("hidden");
-      document.getElementById("idleOverlay").classList.add("hidden");
-      document.getElementById("swipeOverlay").classList.add("hidden");
-    }
-
-    function showSwipeOverlay() {
-      hideAllOverlays();
-      resetSwiper();
-      document.getElementById("swipeOverlay").classList.remove("hidden");
-    }
-
-    function showError(errorText) {
-      hideAllOverlays();
-      document.getElementById("errorResult").innerText = errorText;
-      document.getElementById("errorOverlay").classList.remove("hidden");
-    }
-
-    function showSuccess(successText, seconds = 300) {
-      hideAllOverlays();
-      document.getElementById("successOverlay").classList.remove("hidden");
-      startCountdown(seconds, successText);
-    }
-
-    function startCountdown(seconds, baseText) {
-      const scanResultDiv = document.getElementById("scanResult");
-      let timeLeft = seconds;
-      if (countdownTimer) clearInterval(countdownTimer);
-
-      countdownTimer = setInterval(() => {
-        const minutes = Math.floor(timeLeft / 60);
-        const secs = timeLeft % 60;
-        const timeString = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-        
-        scanResultDiv.innerHTML = `${baseText}<br><br><span style="font-size: 1.1rem; color: #0066fe; font-weight: bold;">⏱ Экран закроется через: ${timeString}</span>`;
-        timeLeft--;
-
-        if (timeLeft < 0) {
-          clearInterval(countdownTimer);
-          setSavedData("app_lock_expires_time", "0");
-          showIdle();
-        }
-      }, 1000);
-    }
-
-    function showIdle() {
-      hideAllOverlays();
-      document.getElementById("idleOverlay").classList.remove("hidden");
-    }
-
-    /* === ОБНОВЛЕННАЯ ЛОГИКА СВАЙПЕРА === */
-    function initSwiperLogic() {
-      const thumb = document.getElementById("swipeThumb");
-      const track = document.getElementById("swipeTrack");
-      const fill  = document.getElementById("swipeFill");
-      const text  = document.getElementById("swipeText");
-
-      if (!thumb || !track) return;
-
-      let isDragging = false;
-      let startX = 0;
-      let maxDrag = 0;
-
-      function getClientX(e) {
-        if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
-        if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientX;
-        return e.clientX;
-      }
-
-      function onStart(e) {
-        isDragging = true;
-        startX = getClientX(e);
-        currentX = 0;
-        const trackRect = track.getBoundingClientRect();
-        const thumbRect = thumb.getBoundingClientRect();
-        maxDrag = trackRect.width - thumbRect.width - 8;
-        if (maxDrag <= 0) maxDrag = 200;
-
-        thumb.style.transition = "none";
-        fill.style.transition = "none";
-        text.style.transition = "opacity 0.2s";
-      }
-
-      function onMove(e) {
-        if (!isDragging) return;
-        const x = getClientX(e);
-        let delta = x - startX;
-        if (delta < 0) delta = 0;
-        if (delta > maxDrag) delta = maxDrag;
-
-        currentX = delta;
-        thumb.style.transform = `translateX(${delta}px)`;
-        fill.style.width = `${(delta / maxDrag) * 100}%`;
-        text.style.opacity = `${1 - (delta / maxDrag) * 1.5}`;
-      }
-
-      function onEnd() {
-        if (!isDragging) return;
-        isDragging = false;
-
-        if (maxDrag > 0 && currentX >= maxDrag * 0.75) {
-          thumb.style.transform = `translateX(${maxDrag}px)`;
-          fill.style.width = "100%";
-          text.style.opacity = "0";
-          currentX = 0;
-          setTimeout(() => {
-            resetSwiper();
-            hideAllOverlays();
-            if (currentUser) executeCheckin(currentUser);
-          }, 180);
-        } else {
-          thumb.style.transition = "transform 0.25s cubic-bezier(0.18, 0.89, 0.32, 1.28)";
-          fill.style.transition = "width 0.25s ease-out";
-          text.style.transition = "opacity 0.25s ease-out";
-          thumb.style.transform = "translateX(0px)";
-          fill.style.width = "0%";
-          text.style.opacity = "1";
-          currentX = 0;
-        }
-      }
-
-      thumb.addEventListener("mousedown", onStart);
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onEnd);
-
-      thumb.addEventListener("touchstart", onStart, { passive: true });
-      window.addEventListener("touchmove", onMove, { passive: true });
-      window.addEventListener("touchend", onEnd);
-      window.addEventListener("touchcancel", onEnd);
-    }
-
-    function resetSwiper() {
-      currentX = 0;
-      const thumb = document.getElementById("swipeThumb");
-      const fill  = document.getElementById("swipeFill");
-      const text  = document.getElementById("swipeText");
-      if (thumb && fill && text) {
-        thumb.style.transition = "none";
-        fill.style.transition = "none";
-        text.style.transition = "none";
-        thumb.style.transform = "translateX(0px)";
-        fill.style.width = "0%";
-        text.style.opacity = "1";
-      }
-    }
-  </script>
+  <!-- Блок 1: Настройка профиля -->
+  <div class="card">
+    <h3>👤 Ваши данные (для автозаполнения)</h3>
+    <form id="profileForm">
+      <label>ФИО:</label>
+      <input type="text" id="profFullName" placeholder="Нурмахмуд Губезов" required>
+      
+      <label>Компания:</label>
+      <input type="text" id="profCompany" placeholder="EUSS" required>
+
+      <label>Режим при сканировании:</label>
+      <select id="actionMode">
+        <option value="open">Открыть заполненную Google Форму</option>
+        <option value="auto">Отправить автоматически в фоновом режиме</option>
+      </select>
+      
+      <button type="submit" class="btn-secondary">Сохранить настройки</button>
+    </form>
+  </div>
+
+  <!-- Блок 2: Сканер QR-кода -->
+  <div class="card">
+    <h3>📷 Сканировать QR-код формы</h3>
+    <div id="reader"></div>
+    <div id="status" class="status-box" style="display:none;"></div>
+  </div>
+
+  <script>
+    // Идентификаторы полей вашей Google Формы
+    const ENTRY_NAME = 'entry.1408210808';    // Поле ФИО
+    const ENTRY_COMPANY = 'entry.1935797578'; // Поле Компания
+
+    // 1. PWA Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    // 2. Загрузка сохраненного профиля
+    function loadProfile() {
+      const profile = JSON.parse(localStorage.getItem('pwa_user_profile') || '{}');
+      if (profile.fullName) {
+        document.getElementById('profFullName').value = profile.fullName;
+        document.getElementById('profCompany').value = profile.company;
+        if (profile.mode) document.getElementById('actionMode').value = profile.mode;
+      }
+    }
+
+    document.getElementById('profileForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const profile = {
+        fullName: document.getElementById('profFullName').value.trim(),
+        company: document.getElementById('profCompany').value.trim(),
+        mode: document.getElementById('actionMode').value
+      };
+      localStorage.setItem('pwa_user_profile', JSON.stringify(profile));
+      alert('Профиль сохранен! Теперь при сканировании эти данные будут подставляться автоматически.');
+    });
+
+    // 3. Обработка отсканированной ссылки из QR-кода
+    function processQrCode(scannedText) {
+      const profile = JSON.parse(localStorage.getItem('pwa_user_profile') || '{}');
+      
+      if (!profile.fullName) {
+        alert('Сначала заполните и сохраните ФИО и Компанию в профиле сверху!');
+        return;
+      }
+
+      if (navigator.vibrate) navigator.vibrate(100);
+
+      const statusBox = document.getElementById('status');
+      statusBox.style.display = 'block';
+
+      try {
+        // Создаем объект URL из отсканированной ссылки
+        let targetUrl = new URL(scannedText);
+
+        // Подставляем параметры ФИО и Компании
+        targetUrl.searchParams.set(ENTRY_NAME, profile.fullName);
+        targetUrl.searchParams.set(ENTRY_COMPANY, profile.company);
+        targetUrl.searchParams.set('usp', 'pp_url');
+
+        if (profile.mode === 'open') {
+          // ВАРИАНТ А: Открываем страницу формы с уже заполненными полями
+          statusBox.innerHTML = `<strong>Ссылка сформирована!</strong><br>Переход на заполненную форму...`;
+          setTimeout(() => {
+            window.location.href = targetUrl.toString();
+          }, 800);
+
+        } else {
+          // ВАРИАНТ Б: Автоматическая фоновая отправка в Google Форму
+          let responseUrl = targetUrl.toString().replace('/viewform', '/formResponse');
+          
+          const formData = new FormData();
+          formData.append(ENTRY_NAME, profile.fullName);
+          formData.append(ENTRY_COMPANY, profile.company);
+
+          statusBox.innerHTML = `<strong>Отправка данных...</strong>`;
+
+          fetch(responseUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: formData
+          }).then(() => {
+            statusBox.style.background = '#dcfce7';
+            statusBox.style.color = '#15803d';
+            statusBox.innerHTML = `✅ <strong>Успешно отправлено!</strong><br>${profile.fullName} (${profile.company})`;
+          }).catch(() => {
+            statusBox.style.background = '#fee2e2';
+            statusBox.style.color = '#b91c1c';
+            statusBox.innerHTML = `❌ Ошибка отправки. Проверьте подключение к интернету.`;
+          });
+        }
+
+      } catch (err) {
+        // Если отсканированный QR-код не является прямой ссылкой
+        statusBox.style.background = '#fef3c7';
+        statusBox.style.color = '#b45309';
+        statusBox.innerHTML = `⚠️ Отсканированный QR-код не содержит ссылку: <br><code>${scannedText}</code>`;
+      }
+    }
+
+    // 4. Инициализация QR-сканера
+    const html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      (decodedText) => {
+        // При обнаружении QR-кода временно останавливаем сканер и обрабатываем ссылку
+        html5QrCode.pause();
+        processQrCode(decodedText);
+        setTimeout(() => html5QrCode.resume(), 3000); // Возобновляем через 3 сек
+      },
+      () => {}
+    ).catch(err => console.log("Ошибка камеры:", err));
+
+    loadProfile();
+  </script>
 </body>
 </html>
