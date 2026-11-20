@@ -23,6 +23,8 @@
     button:disabled { background-color: #a0c4ff; cursor: not-allowed; opacity: 0.7; }
 
     .btn-secondary { background: #e4e6eb; color: #050505; margin-top: 0; margin-bottom: 12px; font-weight: 600; font-size: 0.85rem; padding: 10px; border-radius: 10px; }
+    .btn-refresh { background: #eef4ff; color: #0066fe; margin-top: 10px; font-weight: 600; font-size: 0.9rem; padding: 12px; border: 1px solid #cfe0ff; }
+    .btn-refresh:disabled { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
     
     .overlay {
       width: 100%;
@@ -142,6 +144,7 @@
 
     <input type="text" id="operatorId" placeholder="Загрузка базы..." disabled>
     <button id="submitBtn" onclick="saveSettings()" disabled>Войти в систему</button>
+    <button id="refreshDbBtn" type="button" class="btn-refresh" onclick="refreshDatabaseManually()" disabled>🔄 Обновить базу</button>
 
     <div id="dbStatus" class="loading-text">🔄 Подключение к базе пользователей...</div>
   </div>
@@ -242,8 +245,10 @@
     function unlockUI() {
       const input = document.getElementById("operatorId");
       const btn = document.getElementById("submitBtn");
+      const refreshBtn = document.getElementById("refreshDbBtn");
       input.disabled = false;
       btn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
       input.placeholder = "Например: 242242 или ИИН";
     }
 
@@ -274,6 +279,7 @@
 
     async function loadDatabaseFromGoogleSheet() {
       const statusDiv = document.getElementById("dbStatus");
+      const refreshBtn = document.getElementById("refreshDbBtn");
       const timestamp = new Date().getTime();
       try {
         const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`);
@@ -285,6 +291,51 @@
       } catch (err) {
         statusDiv.innerText = "⚠️ Ошибка подключения к базе.";
         statusDiv.style.color = "#dc2626";
+        if (refreshBtn) refreshBtn.disabled = false;
+      }
+    }
+
+    async function refreshDatabaseManually() {
+      const statusDiv = document.getElementById("dbStatus");
+      const refreshBtn = document.getElementById("refreshDbBtn");
+      const timestamp = new Date().getTime();
+
+      if (refreshBtn) refreshBtn.disabled = true;
+      statusDiv.innerText = "⏳ Обновление базы...";
+      statusDiv.style.color = "#0066fe";
+
+      try {
+        const response = await fetch(`${PUBLISHED_CSV_URL}&t=${timestamp}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Ошибка ответа от Google");
+        const csvText = await response.text();
+        if (csvText.includes("<html") || csvText.includes("<!DOCTYPE html>")) throw new Error("Неверный формат");
+
+        setSavedData("cached_db_csv", csvText);
+        Papa.parse(csvText, {
+          skipEmptyLines: true,
+          complete: function(results) {
+            parseParsedRows(results.data);
+            isDbLoaded = true;
+
+            const savedId = getSavedData("app_operator_id");
+            if (savedId) {
+              const updatedUser = findUser(savedId);
+              if (updatedUser) {
+                currentUser = updatedUser;
+                updateUserInfoDisplay(updatedUser);
+              }
+            }
+
+            const nowTime = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            statusDiv.innerText = `🟢 База обновлена в ${nowTime} (${loadedCount} чел.)`;
+            statusDiv.style.color = "#16a34a";
+            if (refreshBtn) refreshBtn.disabled = false;
+          }
+        });
+      } catch (err) {
+        statusDiv.innerText = "⚠️ Не удалось обновить базу. Проверьте сеть.";
+        statusDiv.style.color = "#dc2626";
+        if (refreshBtn) refreshBtn.disabled = false;
       }
     }
 
